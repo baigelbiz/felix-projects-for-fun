@@ -67,7 +67,14 @@ ANALYSIS_PROMPT = """\
 שלב 2 — חפש באינטרנט מחירים עדכניים של פריטים דומים ביד2 ובפייסבוק מרקטפלייס ישראל.
          אסוף לפחות 3-5 מודעות אמיתיות עם קישורים ישירים.
 
-שלב 3 — החזר תשובה בפורמט JSON בלבד (ללא ```json``` או כל טקסט נוסף), לפי המבנה הבא:
+שלב 3 — חפש לפחות 3 קבוצות פייסבוק ישראליות פעילות למכירת פריטים מהקטגוריה הזו
+         (למשל: "ריהוט יד שנייה ישראל", "קנייה ומכירה תל אביב" וכד'). החזר את ה-URL האמיתי של כל קבוצה.
+
+שלב 4 — בנה URL ישיר לחיפוש ביד2 לפריט הזה, לפי הפורמט:
+         https://www.yad2.co.il/products/second-hand?q=KEYWORD&category=CATEGORY_ID
+         השתמש במילת חיפוש בעברית רלוונטית ובמזהה קטגוריה אמיתי של יד2.
+
+שלב 5 — החזר תשובה בפורמט JSON בלבד (ללא ```json``` או כל טקסט נוסף), לפי המבנה הבא:
 {
   "item_name": "שם הפריט",
   "condition": "מצב",
@@ -85,12 +92,18 @@ ANALYSIS_PROMPT = """\
     "title": "כותרת עד 60 תווים",
     "description": "תיאור מלא",
     "price": 0,
-    "category": "קטגוריה"
+    "category": "קטגוריה",
+    "search_url": "https://www.yad2.co.il/products/second-hand?q=..."
   },
   "facebook": {
     "title": "כותרת",
     "description": "תיאור מלא",
-    "price": 0
+    "price": 0,
+    "groups": [
+      {"name": "שם הקבוצה", "url": "https://www.facebook.com/groups/...", "members": "מספר משוער של חברים"},
+      {"name": "שם הקבוצה", "url": "https://www.facebook.com/groups/...", "members": "מספר משוער של חברים"},
+      {"name": "שם הקבוצה", "url": "https://www.facebook.com/groups/...", "members": "מספר משוער של חברים"}
+    ]
   },
   "selling_tips": ["טיפ 1", "טיפ 2", "טיפ 3"]
 }
@@ -364,6 +377,29 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   .sources-list a:hover { text-decoration:underline; }
   .sources-label { font-size:.75rem; color:#9ca3af; margin-top:14px; margin-bottom:4px; }
 
+  .group-row {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:10px 0; border-bottom:1px solid #2d2d3d; gap:12px;
+  }
+  .group-row:last-child { border:none; }
+  .group-info { flex:1; min-width:0; }
+  .group-info a { color:#60a5fa; text-decoration:none; font-size:.95rem; display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .group-info a:hover { text-decoration:underline; }
+  .group-info span { font-size:.75rem; color:#6b7280; }
+  .post-btn {
+    flex-shrink:0; background:linear-gradient(135deg,#1d4ed8,#2563eb);
+    color:#fff; border:none; border-radius:8px; padding:6px 12px;
+    font-size:.8rem; cursor:pointer; transition:opacity .15s; white-space:nowrap;
+  }
+  .post-btn:hover { opacity:.85; }
+  .yad2-link-btn {
+    display:inline-flex; align-items:center; gap:8px; margin-top:12px;
+    background:#ef4444; color:#fff; text-decoration:none;
+    padding:10px 18px; border-radius:10px; font-size:.9rem; font-weight:600;
+    transition:opacity .15s;
+  }
+  .yad2-link-btn:hover { opacity:.85; }
+
   .tg-note {
     max-width:800px; margin:0 auto 32px;
     background:#1a1a24; border:1px solid #2d2d3d;
@@ -465,10 +501,14 @@ analyzeBtn.addEventListener('click', async () => {
 
 function renderResults(d) {
   const m = d.market, y = d.yad2, f = d.facebook;
+
+  const fbListing = `${f.title}\n\n${f.description}\n\nמחיר: ${priceILS(f.price)}`;
+
   results.innerHTML = `
   <div class="card">
     <div class="card-header">🏷 ${d.item_name} &nbsp;|&nbsp; <span style="color:#9ca3af;font-weight:400">${d.condition}</span></div>
   </div>
+
   <div class="card">
     <div class="card-header">📊 מחקר שוק</div>
     <div class="market-grid">
@@ -478,28 +518,52 @@ function renderResults(d) {
     </div>
     <div style="color:#9ca3af;font-size:.9rem;line-height:1.6">${m.market_summary}</div>
     ${m.sources?.length ? `
-    <div class="sources-label">🔗 מקורות</div>
+    <div class="sources-label">🔗 מקורות מחיר</div>
     <ul class="sources-list">${m.sources.map(s=>`<li><a href="${s.url}" target="_blank" rel="noopener">${s.title}</a></li>`).join('')}</ul>` : ''}
   </div>
+
   <div class="card">
     <div class="card-header">📋 יד2</div>
     ${renderField('כותרת', y.title, true)}
     ${renderField('תיאור', y.description, true)}
     ${renderField('מחיר', priceILS(y.price), false)}
     ${renderField('קטגוריה', y.category, false)}
+    ${y.search_url ? `<a class="yad2-link-btn" href="${y.search_url}" target="_blank" rel="noopener">🔍 חפש פריטים דומים ביד2</a>` : ''}
   </div>
+
   <div class="card">
     <div class="card-header">💙 Facebook Marketplace</div>
     ${renderField('כותרת', f.title, true)}
     ${renderField('תיאור', f.description, true)}
     ${renderField('מחיר', priceILS(f.price), false)}
+    ${f.groups?.length ? `
+    <div class="sources-label" style="margin-top:18px">👥 קבוצות פייסבוק למכירה — לחץ "פרסם" להעתקת המודעה ופתיחת הקבוצה</div>
+    <div>${f.groups.map(g=>`
+      <div class="group-row">
+        <div class="group-info">
+          <a href="${g.url}" target="_blank" rel="noopener">${g.name}</a>
+          ${g.members ? `<span>${g.members} חברים</span>` : ''}
+        </div>
+        <button class="post-btn" onclick="postToGroup('${g.url.replace(/'/g,"\\'")}', this)">📤 פרסם</button>
+      </div>`).join('')}
+    </div>` : ''}
   </div>
+
   ${d.selling_tips?.length ? `
   <div class="card">
     <div class="card-header">💡 טיפים למכירה מהירה</div>
     <ul class="tips-list">${d.selling_tips.map(t=>`<li>${t}</li>`).join('')}</ul>
   </div>` : ''}`;
+
+  window._fbListing = fbListing;
   results.scrollIntoView({ behavior:'smooth', block:'start' });
+}
+
+function postToGroup(url, btn) {
+  navigator.clipboard.writeText(window._fbListing || '').then(() => {
+    btn.textContent = '✓ הועתק!';
+    setTimeout(() => { window.open(url, '_blank'); btn.textContent = '📤 פרסם'; }, 600);
+  });
 }
 </script>
 </body>
