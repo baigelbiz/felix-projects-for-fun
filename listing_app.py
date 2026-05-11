@@ -98,7 +98,7 @@ def analyze_image(image_bytes: bytes, mime_type: str = 'image/jpeg') -> dict:
     identifies item, searches live prices, returns structured listing.
     """
     response = ai.models.generate_content(
-        model='gemini-2.0-flash',
+        model='gemini-2.5-flash',
         contents=[
             types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
             ANALYSIS_PROMPT,
