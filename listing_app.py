@@ -98,7 +98,7 @@ def analyze_image(image_bytes: bytes, mime_type: str = 'image/jpeg') -> dict:
     identifies item, searches live prices, returns structured listing.
     """
     response = ai.models.generate_content(
-        model='gemini-1.5-flash-latest',
+        model='gemini-2.0-flash',
         contents=[
             types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
             ANALYSIS_PROMPT,
@@ -106,7 +106,6 @@ def analyze_image(image_bytes: bytes, mime_type: str = 'image/jpeg') -> dict:
         config=types.GenerateContentConfig(
             system_instruction=SYSTEM_PROMPT,
             temperature=0.3,
-            tools=[types.Tool(google_search=types.GoogleSearch())],
         ),
     )
 
