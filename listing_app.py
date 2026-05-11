@@ -23,7 +23,8 @@ from pathlib import Path
 
 import requests
 from flask import Flask, Response, jsonify, request
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
 # ── env ──────────────────────────────────────────────────────────────────────
 for _f in [Path(__file__).parent / '.env.listings', Path(__file__).parent / '.env']:
@@ -40,7 +41,7 @@ WEBHOOK_BASE_URL   = os.environ.get('WEBHOOK_BASE_URL', '').rstrip('/')
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
 log = logging.getLogger(__name__)
 
-genai.configure(api_key=GEMINI_API_KEY)
+ai  = genai.Client(api_key=GEMINI_API_KEY)
 app    = Flask(__name__)
 TG_API = f'https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}'
 
@@ -96,21 +97,20 @@ def analyze_image(image_bytes: bytes, mime_type: str = 'image/jpeg') -> dict:
     Single Gemini Flash call with Google Search grounding:
     identifies item, searches live prices, returns structured listing.
     """
-    model = genai.GenerativeModel(
-        model_name='gemini-2.0-flash',
-        system_instruction=SYSTEM_PROMPT,
-        tools='google_search_retrieval',
-    )
-
-    image_part = {'mime_type': mime_type, 'data': image_bytes}
-
-    response = model.generate_content(
-        [image_part, ANALYSIS_PROMPT],
-        generation_config=genai.GenerationConfig(temperature=0.3),
+    response = ai.models.generate_content(
+        model='gemini-2.0-flash',
+        contents=[
+            types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
+            ANALYSIS_PROMPT,
+        ],
+        config=types.GenerateContentConfig(
+            system_instruction=SYSTEM_PROMPT,
+            temperature=0.3,
+            tools=[types.Tool(google_search=types.GoogleSearch())],
+        ),
     )
 
     text = response.text.strip()
-    # strip markdown code fences if model wraps in ```json ... ```
     if text.startswith('```'):
         text = text.split('```')[1]
         if text.startswith('json'):
