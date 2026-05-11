@@ -64,7 +64,8 @@ SYSTEM_PROMPT = """\
 ANALYSIS_PROMPT = """\
 שלב 1 — זהה את הפריט בתמונה: שם, מצב (חדש/כמו חדש/מצוין/טוב/תקין/ישן), חומר, מידות משוערות.
 
-שלב 2 — חפש מחירים עדכניים של פריטים דומים ביד2 ובפייסבוק מרקטפלייס ישראל.
+שלב 2 — חפש באינטרנט מחירים עדכניים של פריטים דומים ביד2 ובפייסבוק מרקטפלייס ישראל.
+         אסוף לפחות 3-5 מודעות אמיתיות עם קישורים ישירים.
 
 שלב 3 — החזר תשובה בפורמט JSON בלבד (ללא ```json``` או כל טקסט נוסף), לפי המבנה הבא:
 {
@@ -74,7 +75,11 @@ ANALYSIS_PROMPT = """\
     "price_min": 0,
     "price_max": 0,
     "recommended_price": 0,
-    "market_summary": "2-3 משפטים על טווח המחירים שמצאת בשוק"
+    "market_summary": "2-3 משפטים על טווח המחירים שמצאת בשוק",
+    "sources": [
+      {"title": "תיאור קצר של המודעה + מחיר", "url": "https://..."},
+      {"title": "תיאור קצר של המודעה + מחיר", "url": "https://..."}
+    ]
   },
   "yad2": {
     "title": "כותרת עד 60 תווים",
@@ -106,6 +111,7 @@ def analyze_image(image_bytes: bytes, mime_type: str = 'image/jpeg') -> dict:
         config=types.GenerateContentConfig(
             system_instruction=SYSTEM_PROMPT,
             temperature=0.3,
+            tools=[types.Tool(google_search=types.GoogleSearch())],
         ),
     )
 
@@ -351,6 +357,13 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   .tips-list li:last-child { border:none; }
   .tips-list li::before { content:"💡 "; }
 
+  .sources-list { list-style:none; margin-top:14px; }
+  .sources-list li { padding: 7px 0; border-bottom:1px solid #2d2d3d; font-size:.85rem; }
+  .sources-list li:last-child { border:none; }
+  .sources-list a { color:#60a5fa; text-decoration:none; }
+  .sources-list a:hover { text-decoration:underline; }
+  .sources-label { font-size:.75rem; color:#9ca3af; margin-top:14px; margin-bottom:4px; }
+
   .tg-note {
     max-width:800px; margin:0 auto 32px;
     background:#1a1a24; border:1px solid #2d2d3d;
@@ -464,6 +477,9 @@ function renderResults(d) {
       <div class="price-box"><div class="label">מחיר מקסימום</div><div class="value">${priceILS(m.price_max)}</div></div>
     </div>
     <div style="color:#9ca3af;font-size:.9rem;line-height:1.6">${m.market_summary}</div>
+    ${m.sources?.length ? `
+    <div class="sources-label">🔗 מקורות</div>
+    <ul class="sources-list">${m.sources.map(s=>`<li><a href="${s.url}" target="_blank" rel="noopener">${s.title}</a></li>`).join('')}</ul>` : ''}
   </div>
   <div class="card">
     <div class="card-header">📋 יד2</div>
