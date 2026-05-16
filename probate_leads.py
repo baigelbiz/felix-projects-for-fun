@@ -3,20 +3,20 @@
 Probate Leads Automation
 
 Reads weekly XLS attachments from jjsrvcs@yahoo.com via Gmail,
-parses each lead row, and creates leads in Close.io.
+uses Gemini to analyse each lead (Creative Cache, Seller Findings, SMS Draft),
+then creates fully-annotated leads in Close.io.
 
-First-time setup:
-  python3 probate_leads.py --auth     # opens browser to authorise Gmail
+First-time Gmail setup:
+  python3 probate_leads.py --auth
 
-Trigger manually:
+Process emails now:
   python3 probate_leads.py --run
 
-Run on schedule (every Friday 10:00 AM Israel time — keep terminal open):
-  python3 probate_leads.py --schedule
+Process a local XLS file (no Gmail needed):
+  python3 probate_leads.py --file path/to/leads.xls
 
-Required env vars (in .env):
-  CLOSE_API_KEY     — Close.io API key
-  GMAIL_TOKEN_FILE  — path to saved token (default: gmail_token.json)
+Run on schedule (every Friday 10:00 AM Israel time):
+  python3 probate_leads.py --schedule
 """
 
 import argparse
@@ -37,6 +37,7 @@ from zoneinfo import ZoneInfo
 import requests
 import schedule
 import xlrd
+from google import genai
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
@@ -50,6 +51,7 @@ for _f in [Path(__file__).parent / '.env']:
                 os.environ.setdefault(k.strip(), v.strip().strip('"\''))
 
 CLOSE_API_KEY    = os.environ.get('CLOSE_API_KEY', '')
+GEMINI_API_KEY   = os.environ.get('GEMINI_API_KEY', '')
 TOKEN_FILE       = Path(os.environ.get('GMAIL_TOKEN_FILE', 'gmail_token.json'))
 CREDENTIALS_FILE = Path(__file__).parent / 'gmail_credentials.json'
 
@@ -63,7 +65,9 @@ CLOSE_BASE     = 'https://api.close.com/api/v1'
 SENDER_FILTER  = 'jjsrvcs@yahoo.com'
 SUBJECT_FILTER = 'Probate Leads'
 
-# ── XLS column indices (from row 50 header) ───────────────────────────────────
+ai = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
+
+# ── XLS column indices ────────────────────────────────────────────────────────
 C = {
     'date_entered':   0,  'case_number':    1,  'date_filed':     2,
     'lawyer_name':    3,  'lawyer_address': 4,  'lawyer_city':    5,
@@ -72,7 +76,7 @@ C = {
     'authority':     12,  'bond':          13,  'date_passing':  14,
     'prop_address':  15,  'prop_city':     16,  'prop_zip':      17,
     'rental_income': 18,  'property_val':  19,  'encumbrances':  20,
-    'line7_total':   21,  'ben1_name':     22,
+    'line7_total':   21,
     'pet_address':   25,  'pet_city':      26,  'pet_state':     27,
     'pet_zip':       28,  'pet_relation':  29,  'pet_phone':     32,
 }
@@ -81,54 +85,43 @@ C = {
 # ── Gmail auth ────────────────────────────────────────────────────────────────
 
 def gmail_auth():
-    """One-time OAuth flow. Saves token to TOKEN_FILE."""
     if not CREDENTIALS_FILE.exists():
-        log.error(f'Missing {CREDENTIALS_FILE}. Place gmail_credentials.json next to this script.')
+        log.error(f'Missing {CREDENTIALS_FILE}')
         sys.exit(1)
 
-    creds_data = json.loads(CREDENTIALS_FILE.read_text())
-    # Support both 'web' and 'installed' credential types
+    creds_data    = json.loads(CREDENTIALS_FILE.read_text())
     client_config = creds_data if 'installed' in creds_data else {'web': creds_data['web']}
-
-    flow = Flow.from_client_config(client_config, scopes=GMAIL_SCOPES, redirect_uri=REDIRECT_URI)
-    auth_url, _ = flow.authorization_url(access_type='offline', prompt='consent')
+    flow          = Flow.from_client_config(client_config, scopes=GMAIL_SCOPES, redirect_uri=REDIRECT_URI)
+    auth_url, _   = flow.authorization_url(access_type='offline', prompt='consent')
 
     log.info('Opening browser for Gmail authorisation...')
     log.info(f'If browser does not open, visit:\n  {auth_url}')
     webbrowser.open(auth_url)
 
-    # Capture the redirect with a tiny HTTP server
     auth_code = [None]
 
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
-            params = parse_qs(urlparse(self.path).query)
-            auth_code[0] = params.get('code', [None])[0]
+            auth_code[0] = parse_qs(urlparse(self.path).query).get('code', [None])[0]
             self.send_response(200)
             self.end_headers()
             self.wfile.write(b'<h2>Authorised! You can close this tab.</h2>')
+        def log_message(self, *a): pass
 
-        def log_message(self, *a):
-            pass
-
-    server = HTTPServer(('localhost', 8090), Handler)
-    server.handle_request()
-
+    HTTPServer(('localhost', 8090), Handler).handle_request()
     if not auth_code[0]:
         log.error('No auth code received.')
         sys.exit(1)
 
     flow.fetch_token(code=auth_code[0])
-    creds = flow.credentials
-    TOKEN_FILE.write_text(creds.to_json())
+    TOKEN_FILE.write_text(flow.credentials.to_json())
     log.info(f'Token saved to {TOKEN_FILE}')
 
 
 def get_gmail_creds() -> Credentials:
     if not TOKEN_FILE.exists():
-        log.error('No Gmail token found. Run: python3 probate_leads.py --auth')
+        log.error('Run: python3 probate_leads.py --auth')
         sys.exit(1)
-
     creds = Credentials.from_authorized_user_file(str(TOKEN_FILE), GMAIL_SCOPES)
     if creds.expired and creds.refresh_token:
         creds.refresh(Request())
@@ -138,46 +131,38 @@ def get_gmail_creds() -> Credentials:
 
 # ── Gmail helpers ─────────────────────────────────────────────────────────────
 
-def gmail_get(creds: Credentials, path: str, **params) -> dict:
-    headers = {'Authorization': f'Bearer {creds.token}'}
+def gmail_get(creds, path, **params):
     r = requests.get(f'https://gmail.googleapis.com/gmail/v1/{path}',
-                     headers=headers, params=params, timeout=30)
+                     headers={'Authorization': f'Bearer {creds.token}'},
+                     params=params, timeout=30)
     r.raise_for_status()
     return r.json()
 
 
-def fetch_xls_attachments(creds: Credentials, since_days: int = 8) -> list[bytes]:
-    """Return list of raw XLS bytes from matching emails."""
+def fetch_xls_attachments(creds, since_days=8):
     query = f'from:{SENDER_FILTER} subject:"{SUBJECT_FILTER}" has:attachment newer_than:{since_days}d'
-    data  = gmail_get(creds, 'users/me/messages', q=query, maxResults=20)
-    msgs  = data.get('messages', [])
+    msgs  = gmail_get(creds, 'users/me/messages', q=query, maxResults=20).get('messages', [])
     log.info(f'Found {len(msgs)} matching email(s)')
+    result = []
+    for m in msgs:
+        msg = gmail_get(creds, f'users/me/messages/{m["id"]}', format='full')
+        result.extend(_extract_xls(creds, msg))
+    return result
 
-    attachments = []
-    for msg_ref in msgs:
-        msg = gmail_get(creds, f'users/me/messages/{msg_ref["id"]}', format='full')
-        attachments.extend(_extract_xls(creds, msg))
-    return attachments
 
-
-def _extract_xls(creds: Credentials, msg: dict) -> list[bytes]:
-    results = []
-    parts   = msg.get('payload', {}).get('parts', [])
-
+def _extract_xls(creds, msg):
+    out = []
     def walk(parts):
-        for part in parts:
-            fname = part.get('filename', '')
-            if fname.lower().endswith(('.xls', '.xlsx')):
-                att_id = part.get('body', {}).get('attachmentId')
+        for p in parts:
+            if p.get('filename', '').lower().endswith(('.xls', '.xlsx')):
+                att_id = p.get('body', {}).get('attachmentId')
                 if att_id:
                     data = gmail_get(creds, f'users/me/messages/{msg["id"]}/attachments/{att_id}')
-                    raw  = base64.urlsafe_b64decode(data['data'])
-                    results.append(raw)
-                    log.info(f'Downloaded attachment: {fname} ({len(raw)} bytes)')
-            walk(part.get('parts', []))
-
-    walk(parts)
-    return results
+                    out.append(base64.urlsafe_b64decode(data['data']))
+                    log.info(f'Downloaded: {p["filename"]}')
+            walk(p.get('parts', []))
+    walk(msg.get('payload', {}).get('parts', []))
+    return out
 
 
 # ── XLS parser ────────────────────────────────────────────────────────────────
@@ -186,36 +171,34 @@ def parse_leads(xls_bytes: bytes) -> list[dict]:
     wb    = xlrd.open_workbook(file_contents=xls_bytes)
     sheet = wb.sheets()[0]
 
-    # Find the header row (contains 'Case Number')
-    header_row = None
-    for i in range(sheet.nrows):
-        row = sheet.row_values(i)
-        if any('Case Number' in str(v) for v in row):
-            header_row = i
-            break
-
+    header_row = next(
+        (i for i in range(sheet.nrows)
+         if any('Case Number' in str(v) for v in sheet.row_values(i))),
+        None
+    )
     if header_row is None:
-        log.warning('Could not find header row in XLS')
+        log.warning('Header row not found')
         return []
 
     leads = []
     for i in range(header_row + 1, sheet.nrows):
-        row = sheet.row_values(i)
-        case_num = str(row[C['case_number']]).strip()
-        if not case_num or case_num == '0.0':
+        row      = sheet.row_values(i)
+        case_num = str(row[C['case_number']]).strip() if len(row) > C['case_number'] else ''
+        if not case_num or case_num in ('', '0.0', '0'):
             continue
 
         def cell(key):
-            v = row[C[key]] if C[key] < len(row) else ''
-            if isinstance(v, float) and v == int(v):
-                return str(int(v))
+            idx = C.get(key, -1)
+            if idx < 0 or idx >= len(row): return ''
+            v = row[idx]
+            if isinstance(v, float) and v == int(v): return str(int(v))
             return str(v).strip() if v else ''
 
         def money(key):
-            try:
-                return float(row[C[key]]) if C[key] < len(row) else 0.0
-            except (ValueError, TypeError):
-                return 0.0
+            idx = C.get(key, -1)
+            if idx < 0 or idx >= len(row): return 0.0
+            try:   return float(row[idx])
+            except: return 0.0
 
         leads.append({
             'case_number':   case_num,
@@ -252,132 +235,304 @@ def parse_leads(xls_bytes: bytes) -> list[dict]:
             },
         })
 
-    log.info(f'Parsed {len(leads)} lead(s) from XLS')
+    log.info(f'Parsed {len(leads)} lead(s)')
     return leads
+
+
+# ── Gemini analysis ───────────────────────────────────────────────────────────
+
+ANALYSIS_PROMPT = """\
+You are a real estate investment analyst specialising in probate and Subject To (SubTo) deals.
+
+Here is a probate lead from court records:
+
+DECEASED: {deceased_name}
+CASE #: {case_number} | Filed: {date_filed} | Date of Passing: {date_passing}
+PROPERTY: {prop_address}, {prop_city} {prop_zip}
+Property Value: ${property_val:,.0f}
+Encumbrances/Mortgage: ${encumbrances:,.0f}
+Equity (Line 7 Total): ${line7_total:,.0f}
+Rental Income: ${rental_income:,.0f}/yr
+Authority Type: {authority}
+Petitioner: {petitioner} ({pet_relation}) | Phone: {pet_phone}
+Petitioner Address: {pet_address}, {pet_city} {pet_state} {pet_zip}
+Executor/Admin: {exec_admin}
+Attorney: {lawyer_name} | {lawyer_phone} | {lawyer_email}
+
+Analyse this lead and respond ONLY with valid JSON in this exact structure (no markdown, no extra text):
+
+{{
+  "creative_cache": {{
+    "lead_source": "Probate Court Records via J&J Services",
+    "property": "{prop_address}, {prop_city} {prop_zip}",
+    "seller": "{petitioner}",
+    "situation": "one sentence",
+    "estimated_value": "${property_val:,.0f}",
+    "mortgage_info": "based on encumbrances data",
+    "equity": "${equity:,.0f}",
+    "motivation": "one sentence",
+    "subject_to_fit": "Likely / Possible / Not enough info",
+    "missing_info": "what we need to find out",
+    "suggested_strategy": "SubTo / Cash Offer / Seller Finance / Needs Discovery",
+    "next_action": "specific next step"
+  }},
+  "seller_findings": {{
+    "source": "Probate Court Records",
+    "key_findings": "2-3 sentences",
+    "motivation": "one sentence",
+    "timeline": "estimate based on probate timeline",
+    "property_condition": "Unknown — needs inspection",
+    "occupancy": "Unknown — needs verification",
+    "pain_points": "likely pain points for this type of probate",
+    "risks_red_flags": "any concerns from the data",
+    "recommended_approach": "one sentence"
+  }},
+  "recommendation": {{
+    "action": "Call immediately / Send SMS first / Research mortgage first / Skip trace / Add to nurture / Possible Subject To / Possible cash offer",
+    "reason": "one sentence why"
+  }},
+  "sms_draft": "Hi [Seller], this is Felix. I came across the estate of [deceased] and wanted to reach out. Would you be open to a quick conversation about the property?"
+}}
+"""
+
+def gemini_analyse(lead: dict) -> dict:
+    if not ai:
+        return {}
+    equity = lead['property_val'] - lead['encumbrances']
+    pc     = lead['petitioner_contact']
+    lw     = lead['lawyer']
+    prompt = ANALYSIS_PROMPT.format(
+        deceased_name=lead['deceased_name'],
+        case_number=lead['case_number'],
+        date_filed=lead['date_filed'],
+        date_passing=lead['date_passing'],
+        prop_address=lead['prop_address'],
+        prop_city=lead['prop_city'],
+        prop_zip=lead['prop_zip'],
+        property_val=lead['property_val'],
+        encumbrances=lead['encumbrances'],
+        line7_total=lead['line7_total'],
+        rental_income=lead['rental_income'],
+        authority=lead['authority'],
+        petitioner=pc['name'],
+        pet_relation=pc['relation'],
+        pet_phone=pc['phone'],
+        pet_address=pc['address'],
+        pet_city=pc['city'],
+        pet_state=pc['state'],
+        pet_zip=pc['zip'],
+        exec_admin=lead['exec_admin'],
+        lawyer_name=lw['name'],
+        lawyer_phone=lw['phone'],
+        lawyer_email=lw['email'],
+        equity=equity,
+    )
+    try:
+        resp = ai.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt,
+            config={'temperature': 0.2},
+        )
+        text = resp.text.strip()
+        if text.startswith('```'):
+            text = text.split('```')[1]
+            if text.startswith('json'): text = text[4:]
+            text = text.strip()
+        return json.loads(text)
+    except Exception as e:
+        log.warning(f'Gemini analysis failed for {lead["case_number"]}: {e}')
+        return {}
+
+
+def build_close_note(lead: dict, analysis: dict) -> str:
+    equity = lead['property_val'] - lead['encumbrances']
+    lines  = [
+        f'📁 CASE #{lead["case_number"]}  |  Filed: {lead["date_filed"]}  |  Passing: {lead["date_passing"]}',
+        f'⚖️  Authority: {lead["authority"]}  |  Executor/Admin: {lead["exec_admin"]}',
+        '',
+    ]
+
+    cc = analysis.get('creative_cache', {})
+    if cc:
+        lines += [
+            '═══ CREATIVE CACHE — SUBJECT TO ANALYSIS ═══',
+            f'Lead Source:        {cc.get("lead_source","")}',
+            f'Property:           {cc.get("property","")}',
+            f'Seller:             {cc.get("seller","")}',
+            f'Situation:          {cc.get("situation","")}',
+            f'Estimated Value:    {cc.get("estimated_value","")}',
+            f'Mortgage / Loan:    {cc.get("mortgage_info","")}',
+            f'Equity:             {cc.get("equity","")}',
+            f'Motivation:         {cc.get("motivation","")}',
+            f'Subject To Fit:     {cc.get("subject_to_fit","")}',
+            f'Missing Info:       {cc.get("missing_info","")}',
+            f'Suggested Strategy: {cc.get("suggested_strategy","")}',
+            f'Next Action:        {cc.get("next_action","")}',
+            '',
+        ]
+
+    sf = analysis.get('seller_findings', {})
+    if sf:
+        lines += [
+            '═══ SELLER FINDINGS ═══',
+            f'Source:              {sf.get("source","")}',
+            f'Key Findings:        {sf.get("key_findings","")}',
+            f'Motivation:          {sf.get("motivation","")}',
+            f'Timeline:            {sf.get("timeline","")}',
+            f'Property Condition:  {sf.get("property_condition","")}',
+            f'Occupancy:           {sf.get("occupancy","")}',
+            f'Seller Pain Points:  {sf.get("pain_points","")}',
+            f'Risks / Red Flags:   {sf.get("risks_red_flags","")}',
+            f'Recommended Approach:{sf.get("recommended_approach","")}',
+            '',
+        ]
+
+    rec = analysis.get('recommendation', {})
+    if rec:
+        lines += [
+            '═══ RECOMMENDATION ═══',
+            f'Action: {rec.get("action","")}',
+            f'Reason: {rec.get("reason","")}',
+            '',
+        ]
+
+    sms = analysis.get('sms_draft', '')
+    if sms:
+        lines += [
+            '═══ SMS DRAFT ═══',
+            sms,
+            '',
+        ]
+
+    lines += [
+        '═══ PROPERTY & FINANCIALS ═══',
+        f'Address:        {lead["prop_address"]}, {lead["prop_city"]} {lead["prop_zip"]}',
+        f'Property Value: ${lead["property_val"]:,.0f}',
+        f'Encumbrances:   ${lead["encumbrances"]:,.0f}',
+        f'Equity:         ${equity:,.0f}',
+    ]
+    if lead['rental_income']:
+        lines.append(f'Rental Income:  ${lead["rental_income"]:,.0f}/yr')
+
+    lines += [
+        '',
+        '═══ ATTORNEY ═══',
+        f'{lead["lawyer"]["name"]}',
+        f'Phone: {lead["lawyer"]["phone"]}  |  Email: {lead["lawyer"]["email"]}',
+        f'{lead["lawyer"]["address"]}, {lead["lawyer"]["city"]} {lead["lawyer"]["zip"]}',
+    ]
+
+    return '\n'.join(lines)
 
 
 # ── Close.io helpers ──────────────────────────────────────────────────────────
 
-def close_req(method: str, path: str, **kwargs) -> dict:
-    r = requests.request(
-        method, f'{CLOSE_BASE}/{path}/',
-        auth=(CLOSE_API_KEY, ''),
-        timeout=30, **kwargs
-    )
+def close_req(method, path, **kwargs):
+    r = requests.request(method, f'{CLOSE_BASE}/{path}/',
+                         auth=(CLOSE_API_KEY, ''), timeout=30, **kwargs)
     r.raise_for_status()
     return r.json()
 
 
 def case_exists(case_number: str) -> bool:
-    """Return True if a lead with this case number already exists in Close.io."""
     data = close_req('GET', 'lead', params={'query': f'"{case_number}"', '_fields': 'id,display_name'})
     return len(data.get('data', [])) > 0
 
 
-def create_close_lead(lead: dict) -> str:
-    """Create a lead in Close.io and return its ID."""
-    deceased  = lead['deceased_name']
-    case      = lead['case_number']
-    prop_val  = lead['property_val']
-    encumb    = lead['encumbrances']
-    equity    = prop_val - encumb
-
-    description = (
-        f"Case #: {case}\n"
-        f"Filed: {lead['date_filed']}  |  Date of Passing: {lead['date_passing']}\n"
-        f"Authority: {lead['authority']}  |  Executor/Admin: {lead['exec_admin']}\n\n"
-        f"Property: {lead['prop_address']}, {lead['prop_city']} {lead['prop_zip']}\n"
-        f"Property Value: ${prop_val:,.0f}\n"
-        f"Encumbrances:   ${encumb:,.0f}\n"
-        f"Equity:         ${equity:,.0f}\n"
-    )
-    if lead['rental_income']:
-        description += f"Rental Income:  ${lead['rental_income']:,.0f}/yr\n"
+def create_close_lead(lead: dict, analysis: dict) -> str:
+    equity = lead['property_val'] - lead['encumbrances']
+    pc     = lead['petitioner_contact']
+    lw     = lead['lawyer']
+    rec    = analysis.get('recommendation', {})
 
     contacts = []
-    pc = lead['petitioner_contact']
     if pc['name']:
-        contact = {
-            'name':  pc['name'],
-            'title': pc['relation'] or 'Petitioner',
-        }
-        if pc['phone']:
-            contact['phones'] = [{'phone': pc['phone'], 'type': 'office'}]
-        if pc['address']:
-            contact['addresses'] = [{'address_1': pc['address'], 'city': pc['city'],
-                                      'state': pc['state'], 'zipcode': pc['zip']}]
-        contacts.append(contact)
+        c = {'name': pc['name'], 'title': pc['relation'] or 'Petitioner'}
+        if pc['phone']:   c['phones']    = [{'phone': pc['phone'], 'type': 'office'}]
+        if pc['address']: c['addresses'] = [{'address_1': pc['address'], 'city': pc['city'],
+                                              'state': pc['state'], 'zipcode': pc['zip']}]
+        contacts.append(c)
 
-    lw = lead['lawyer']
     if lw['name']:
-        contact = {
-            'name':  lw['name'],
-            'title': 'Attorney',
-        }
-        if lw['phone']:
-            contact['phones'] = [{'phone': lw['phone'], 'type': 'office'}]
-        if lw['email']:
-            contact['emails'] = [{'email': lw['email'], 'type': 'office'}]
-        if lw['address']:
-            contact['addresses'] = [{'address_1': lw['address'], 'city': lw['city'],
-                                      'zipcode': lw['zip']}]
-        contacts.append(contact)
+        c = {'name': lw['name'], 'title': 'Attorney'}
+        if lw['phone']:   c['phones']    = [{'phone': lw['phone'], 'type': 'office'}]
+        if lw['email']:   c['emails']    = [{'email': lw['email'], 'type': 'office'}]
+        if lw['address']: c['addresses'] = [{'address_1': lw['address'], 'city': lw['city'],
+                                              'zipcode': lw['zip']}]
+        contacts.append(c)
 
-    payload = {
-        'name':        f'Estate of {deceased}',
-        'description': description,
-        'contacts':    contacts,
-    }
+    note_text = build_close_note(lead, analysis)
 
-    result = close_req('POST', 'lead', json=payload)
-    return result['id']
+    result = close_req('POST', 'lead', json={
+        'name':        f'Estate of {lead["deceased_name"]}',
+        'description': (
+            f'Case #{lead["case_number"]} | '
+            f'Property: ${lead["property_val"]:,.0f} | '
+            f'Equity: ${equity:,.0f} | '
+            f'{rec.get("action","")}'
+        ),
+        'contacts': contacts,
+    })
+    lead_id = result['id']
+
+    # Add full analysis as a note
+    close_req('POST', 'activity/note', json={
+        'lead_id': lead_id,
+        'note':    note_text,
+    })
+
+    return lead_id
 
 
 # ── Main run ──────────────────────────────────────────────────────────────────
 
-def run():
-    log.info('=== Probate Leads run started ===')
-
+def process_leads(leads: list[dict]):
     if not CLOSE_API_KEY:
         log.error('CLOSE_API_KEY not set in .env')
         return
+    created = skipped = errors = 0
+    for lead in leads:
+        try:
+            if case_exists(lead['case_number']):
+                log.info(f'Skip (exists): {lead["case_number"]} — {lead["deceased_name"]}')
+                skipped += 1
+                continue
 
-    creds       = get_gmail_creds()
+            log.info(f'Analysing: {lead["case_number"]} — {lead["deceased_name"]}')
+            analysis = gemini_analyse(lead)
+
+            lead_id = create_close_lead(lead, analysis)
+            rec     = analysis.get('recommendation', {})
+            log.info(f'Created: {lead["deceased_name"]} → {lead_id} | {rec.get("action","")}')
+            created += 1
+            time.sleep(0.5)
+        except Exception as e:
+            log.error(f'Error on {lead["case_number"]}: {e}')
+            errors += 1
+
+    log.info(f'Done — {created} created, {skipped} skipped, {errors} errors')
+
+
+def run_from_gmail():
+    log.info('=== Probate Leads: Gmail run ===')
+    creds = get_gmail_creds()
     attachments = fetch_xls_attachments(creds)
-
     if not attachments:
         log.info('No new attachments found.')
         return
+    for xls in attachments:
+        process_leads(parse_leads(xls))
 
-    created = skipped = errors = 0
-    for xls_bytes in attachments:
-        leads = parse_leads(xls_bytes)
-        for lead in leads:
-            try:
-                if case_exists(lead['case_number']):
-                    log.info(f"Skip (exists): {lead['case_number']} — {lead['deceased_name']}")
-                    skipped += 1
-                    continue
-                lead_id = create_close_lead(lead)
-                log.info(f"Created: {lead['case_number']} — {lead['deceased_name']} → {lead_id}")
-                created += 1
-                time.sleep(0.3)  # stay under Close.io rate limit
-            except Exception as e:
-                log.error(f"Error on {lead['case_number']}: {e}")
-                errors += 1
 
-    log.info(f'=== Done: {created} created, {skipped} skipped, {errors} errors ===')
+def run_from_file(path: str):
+    log.info(f'=== Probate Leads: File run — {path} ===')
+    xls_bytes = Path(path).read_bytes()
+    process_leads(parse_leads(xls_bytes))
 
 
 def run_scheduled():
-    log.info('Scheduler started — will run every Friday at 10:00 AM Israel time')
-
-    def job():
-        now = datetime.now(ISRAEL_TZ)
-        if now.weekday() == 4:  # Friday
-            run()
-
-    schedule.every().friday.at('10:00').do(run)
+    log.info('Scheduler active — every Friday 10:00 AM Israel time')
+    schedule.every().friday.at('10:00').do(run_from_gmail)
     while True:
         schedule.run_pending()
         time.sleep(60)
@@ -386,16 +541,19 @@ def run_scheduled():
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Probate Leads Automation')
+    parser = argparse.ArgumentParser(description='Probate Leads → Close.io')
     group  = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument('--auth',     action='store_true', help='One-time Gmail OAuth setup')
-    group.add_argument('--run',      action='store_true', help='Process emails now')
-    group.add_argument('--schedule', action='store_true', help='Run on schedule (Fri 10am Israel)')
+    group.add_argument('--auth',     action='store_true', help='One-time Gmail OAuth')
+    group.add_argument('--run',      action='store_true', help='Pull from Gmail now')
+    group.add_argument('--file',     metavar='XLS',       help='Process a local XLS file')
+    group.add_argument('--schedule', action='store_true', help='Scheduler mode (Fri 10am IST)')
     args = parser.parse_args()
 
     if args.auth:
         gmail_auth()
     elif args.run:
-        run()
+        run_from_gmail()
+    elif args.file:
+        run_from_file(args.file)
     elif args.schedule:
         run_scheduled()

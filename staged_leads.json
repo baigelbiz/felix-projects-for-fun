@@ -1,0 +1,554 @@
+[
+  {
+    "lead": {
+      "case_number": "26PE000049C",
+      "date_entered": "14-May-26",
+      "date_filed": "12-Jan-26",
+      "deceased_name": "Bryan Robert Amaro AKA Bryan Amaro",
+      "petitioner": "Thomas Amaro and Marcos Amaro",
+      "exec_admin": "Administrator",
+      "authority": "Full",
+      "date_passing": "07-Oct-26",
+      "property_val": 1350000.0,
+      "encumbrances": 1215000.0,
+      "line7_total": 946000.0,
+      "rental_income": 144000.0,
+      "prop_address": "3930 Fourth Av Ste 300",
+      "prop_city": "San Diego",
+      "prop_zip": "92103",
+      "lawyer": {
+        "name": "Josh T Fox",
+        "address": "1102 N Chinowth St",
+        "city": "Visalia",
+        "zip": "93291",
+        "phone": "559-733-5770",
+        "email": "jfox@visalialaw.com"
+      },
+      "petitioner_contact": {
+        "name": "Thomas Amaro and Marcos Amaro",
+        "address": "1904 S Royal Oaks Dr",
+        "city": "Visalia",
+        "state": "Ca",
+        "zip": "93277",
+        "phone": "559-740-9730",
+        "relation": "Father Adult"
+      }
+    },
+    "analysis": {
+      "creative_cache": {
+        "lead_source": "Probate Court Records via J&J Services",
+        "property": "3930 Fourth Av Ste 300, San Diego 92103",
+        "seller": "Thomas Amaro and Marcos Amaro",
+        "situation": "Bryan Amaro passed away, and his father, Thomas Amaro, along with Marcos Amaro, are initiating probate to settle his estate.",
+        "estimated_value": "$1,350,000",
+        "mortgage_info": "The property has a significant encumbrance of $1,215,000, representing a high loan-to-value ratio.",
+        "equity": "$135,000",
+        "motivation": "The petitioners are likely motivated to efficiently settle the estate, potentially liquidate the property to distribute assets, or manage the high existing mortgage.",
+        "subject_to_fit": "Likely",
+        "missing_info": "Current mortgage payment, interest rate, loan type, property condition, occupancy status, and specific reasons for selling.",
+        "suggested_strategy": "SubTo / Needs Discovery",
+        "next_action": "Contact petitioners to understand their situation and the property details."
+      },
+      "seller_findings": {
+        "source": "Probate Court Records",
+        "key_findings": "Thomas and Marcos Amaro, likely heirs, are administering the estate of Bryan Amaro. The estate includes a commercial suite with substantial rental income but also a very high mortgage, leaving limited equity.",
+        "motivation": "To efficiently settle the estate, potentially liquidate the property to distribute assets, or manage the high existing mortgage without incurring significant out-of-pocket expenses.",
+        "timeline": "The probate case was filed recently (12-Jan-26) after the passing (07-Oct-26), indicating the estate is in its early stages of administration. 'Full Authority' suggests a potentially faster sale process.",
+        "property_condition": "Unknown \u2014 needs inspection",
+        "occupancy": "Unknown \u2014 needs verification",
+        "pain_points": "Managing a commercial property, high mortgage payments, low net proceeds from a traditional sale due to high closing costs, and the emotional burden of probate.",
+        "risks_red_flags": "The property is a commercial suite, which might have different legal and financial complexities than residential. The low equity means less room for error or negotiation on price.",
+        "recommended_approach": "Approach with empathy, focusing on solutions for their specific challenges with the inherited property and estate."
+      },
+      "recommendation": {
+        "action": "Call immediately / Possible Subject To",
+        "reason": "Early engagement is critical in probate, and the financial structure strongly suggests a Subject To opportunity."
+      },
+      "sms_draft": "Hi [Seller], this is Felix. I came across the estate of [deceased] and wanted to reach out. Would you be open to a quick conversation about the property?"
+    },
+    "note": "\ud83d\udcc1 CASE #26PE000049C  |  Filed: 12-Jan-26  |  Passing: 07-Oct-26\n\u2696\ufe0f  Authority: Full  |  Executor/Admin: Administrator\n\n\u2550\u2550\u2550 CREATIVE CACHE \u2014 SUBJECT TO ANALYSIS \u2550\u2550\u2550\nLead Source:        Probate Court Records via J&J Services\nProperty:           3930 Fourth Av Ste 300, San Diego 92103\nSeller:             Thomas Amaro and Marcos Amaro\nSituation:          Bryan Amaro passed away, and his father, Thomas Amaro, along with Marcos Amaro, are initiating probate to settle his estate.\nEstimated Value:    $1,350,000\nMortgage / Loan:    The property has a significant encumbrance of $1,215,000, representing a high loan-to-value ratio.\nEquity:             $135,000\nMotivation:         The petitioners are likely motivated to efficiently settle the estate, potentially liquidate the property to distribute assets, or manage the high existing mortgage.\nSubject To Fit:     Likely\nMissing Info:       Current mortgage payment, interest rate, loan type, property condition, occupancy status, and specific reasons for selling.\nSuggested Strategy: SubTo / Needs Discovery\nNext Action:        Contact petitioners to understand their situation and the property details.\n\n\u2550\u2550\u2550 SELLER FINDINGS \u2550\u2550\u2550\nSource:              Probate Court Records\nKey Findings:        Thomas and Marcos Amaro, likely heirs, are administering the estate of Bryan Amaro. The estate includes a commercial suite with substantial rental income but also a very high mortgage, leaving limited equity.\nMotivation:          To efficiently settle the estate, potentially liquidate the property to distribute assets, or manage the high existing mortgage without incurring significant out-of-pocket expenses.\nTimeline:            The probate case was filed recently (12-Jan-26) after the passing (07-Oct-26), indicating the estate is in its early stages of administration. 'Full Authority' suggests a potentially faster sale process.\nProperty Condition:  Unknown \u2014 needs inspection\nOccupancy:           Unknown \u2014 needs verification\nSeller Pain Points:  Managing a commercial property, high mortgage payments, low net proceeds from a traditional sale due to high closing costs, and the emotional burden of probate.\nRisks / Red Flags:   The property is a commercial suite, which might have different legal and financial complexities than residential. The low equity means less room for error or negotiation on price.\nRecommended Approach:Approach with empathy, focusing on solutions for their specific challenges with the inherited property and estate.\n\n\u2550\u2550\u2550 RECOMMENDATION \u2550\u2550\u2550\nAction: Call immediately / Possible Subject To\nReason: Early engagement is critical in probate, and the financial structure strongly suggests a Subject To opportunity.\n\n\u2550\u2550\u2550 SMS DRAFT \u2550\u2550\u2550\nHi [Seller], this is Felix. I came across the estate of [deceased] and wanted to reach out. Would you be open to a quick conversation about the property?\n\n\u2550\u2550\u2550 PROPERTY & FINANCIALS \u2550\u2550\u2550\nAddress:        3930 Fourth Av Ste 300, San Diego 92103\nProperty Value: $1,350,000\nEncumbrances:   $1,215,000\nEquity:         $135,000\nRental Income:  $144,000/yr\n\n\u2550\u2550\u2550 ATTORNEY \u2550\u2550\u2550\nJosh T Fox\nPhone: 559-733-5770  |  Email: jfox@visalialaw.com\n1102 N Chinowth St, Visalia 93291"
+  },
+  {
+    "lead": {
+      "case_number": "26PE000930C",
+      "date_entered": "14-May-26",
+      "date_filed": "04-May-26",
+      "deceased_name": "Edgar Lee Yoho Jr",
+      "petitioner": "Michelle A Yoho",
+      "exec_admin": "Executor",
+      "authority": "Full",
+      "date_passing": "30-Apr-24",
+      "property_val": 916000.0,
+      "encumbrances": 0.0,
+      "line7_total": 916000.0,
+      "rental_income": 0.0,
+      "prop_address": "4734 Via Colorado",
+      "prop_city": "Oceanside",
+      "prop_zip": "92056",
+      "lawyer": {
+        "name": "Cary L Cotton",
+        "address": "630 Alta Vista Dr Ste 102",
+        "city": "Vista",
+        "zip": "92084",
+        "phone": "760-726-9882",
+        "email": "clcotten@hagarandcotten.com"
+      },
+      "petitioner_contact": {
+        "name": "Michelle A Yoho",
+        "address": "1344 Woodhaven Dr",
+        "city": "Oceanside",
+        "state": "Ca",
+        "zip": "92056",
+        "phone": "760-672-4726",
+        "relation": "Daughter Adult"
+      }
+    },
+    "analysis": {
+      "creative_cache": {
+        "lead_source": "Probate Court Records",
+        "property": "4734 Via Colorado, Oceanside 92056",
+        "seller": "Michelle A Yoho",
+        "situation": "Edgar Lee Yoho Jr passed away, and his daughter, Michelle, is petitioning to be the executor of his estate, which includes a property with significant equity and no mortgage.",
+        "estimated_value": "$916,000",
+        "mortgage_info": "$0",
+        "equity": "$916,000",
+        "motivation": "The motivation is likely to settle the estate, distribute assets to heirs, and potentially avoid the burdens of property ownership and probate complexities.",
+        "subject_to_fit": "Not enough info",
+        "missing_info": "Property condition, occupancy, specific reasons for selling, other heirs, any other debts of the estate, and the seller's openness to creative financing given no existing mortgage.",
+        "suggested_strategy": "Cash Offer / Seller Finance / Needs Discovery",
+        "next_action": "Contact Michelle A Yoho to understand her situation and goals for the property."
+      },
+      "seller_findings": {
+        "source": "Probate Court Records",
+        "key_findings": "Michelle A Yoho is the adult daughter and petitioner/executor with full authority. The property has $916,000 in equity with no mortgage, indicating a valuable asset in the estate.",
+        "motivation": "Likely driven by the need to settle the estate, distribute assets to beneficiaries, and potentially alleviate the responsibilities of managing an inherited property.",
+        "timeline": "This is a very fresh probate, filed just days after the date of passing (assuming '04-May-26' is a typo and should be '04-May-24'), indicating a potentially urgent need to resolve the estate.",
+        "property_condition": "Unknown \u2014 needs inspection",
+        "occupancy": "Unknown \u2014 needs verification",
+        "pain_points": "Dealing with the emotional burden of loss, navigating the legal probate process, potential property upkeep, and the complexities of asset distribution.",
+        "risks_red_flags": "The 'Filed: 04-May-26' date is a discrepancy if taken literally; assuming it's a typo for '04-May-24'. Otherwise, no immediate red flags from the provided data.",
+        "recommended_approach": "An empathetic and solution-oriented approach, focusing on simplifying the probate process and offering a quick, fair resolution for the property."
+      },
+      "recommendation": {
+        "action": "Call immediately",
+        "reason": "This is a fresh lead with high equity, no mortgage, and direct contact information for the petitioner/executor, making it highly actionable."
+      },
+      "sms_draft": "Hi Michelle, this is Felix. I came across the estate of Edgar Lee Yoho Jr and wanted to reach out. Would you be open to a quick conversation about the property at 4734 Via Colorado?"
+    },
+    "note": "\ud83d\udcc1 CASE #26PE000930C  |  Filed: 04-May-26  |  Passing: 30-Apr-24\n\u2696\ufe0f  Authority: Full  |  Executor/Admin: Executor\n\n\u2550\u2550\u2550 CREATIVE CACHE \u2014 SUBJECT TO ANALYSIS \u2550\u2550\u2550\nLead Source:        Probate Court Records\nProperty:           4734 Via Colorado, Oceanside 92056\nSeller:             Michelle A Yoho\nSituation:          Edgar Lee Yoho Jr passed away, and his daughter, Michelle, is petitioning to be the executor of his estate, which includes a property with significant equity and no mortgage.\nEstimated Value:    $916,000\nMortgage / Loan:    $0\nEquity:             $916,000\nMotivation:         The motivation is likely to settle the estate, distribute assets to heirs, and potentially avoid the burdens of property ownership and probate complexities.\nSubject To Fit:     Not enough info\nMissing Info:       Property condition, occupancy, specific reasons for selling, other heirs, any other debts of the estate, and the seller's openness to creative financing given no existing mortgage.\nSuggested Strategy: Cash Offer / Seller Finance / Needs Discovery\nNext Action:        Contact Michelle A Yoho to understand her situation and goals for the property.\n\n\u2550\u2550\u2550 SELLER FINDINGS \u2550\u2550\u2550\nSource:              Probate Court Records\nKey Findings:        Michelle A Yoho is the adult daughter and petitioner/executor with full authority. The property has $916,000 in equity with no mortgage, indicating a valuable asset in the estate.\nMotivation:          Likely driven by the need to settle the estate, distribute assets to beneficiaries, and potentially alleviate the responsibilities of managing an inherited property.\nTimeline:            This is a very fresh probate, filed just days after the date of passing (assuming '04-May-26' is a typo and should be '04-May-24'), indicating a potentially urgent need to resolve the estate.\nProperty Condition:  Unknown \u2014 needs inspection\nOccupancy:           Unknown \u2014 needs verification\nSeller Pain Points:  Dealing with the emotional burden of loss, navigating the legal probate process, potential property upkeep, and the complexities of asset distribution.\nRisks / Red Flags:   The 'Filed: 04-May-26' date is a discrepancy if taken literally; assuming it's a typo for '04-May-24'. Otherwise, no immediate red flags from the provided data.\nRecommended Approach:An empathetic and solution-oriented approach, focusing on simplifying the probate process and offering a quick, fair resolution for the property.\n\n\u2550\u2550\u2550 RECOMMENDATION \u2550\u2550\u2550\nAction: Call immediately\nReason: This is a fresh lead with high equity, no mortgage, and direct contact information for the petitioner/executor, making it highly actionable.\n\n\u2550\u2550\u2550 SMS DRAFT \u2550\u2550\u2550\nHi Michelle, this is Felix. I came across the estate of Edgar Lee Yoho Jr and wanted to reach out. Would you be open to a quick conversation about the property at 4734 Via Colorado?\n\n\u2550\u2550\u2550 PROPERTY & FINANCIALS \u2550\u2550\u2550\nAddress:        4734 Via Colorado, Oceanside 92056\nProperty Value: $916,000\nEncumbrances:   $0\nEquity:         $916,000\n\n\u2550\u2550\u2550 ATTORNEY \u2550\u2550\u2550\nCary L Cotton\nPhone: 760-726-9882  |  Email: clcotten@hagarandcotten.com\n630 Alta Vista Dr Ste 102, Vista 92084"
+  },
+  {
+    "lead": {
+      "case_number": "26PE001205C",
+      "date_entered": "14-May-26",
+      "date_filed": "07-May-26",
+      "deceased_name": "Onofre Garza Jr",
+      "petitioner": "Dulce Lopez",
+      "exec_admin": "Administrator",
+      "authority": "",
+      "date_passing": "04-May-26",
+      "property_val": 6000000.0,
+      "encumbrances": 3000000.0,
+      "line7_total": 4050000.0,
+      "rental_income": 0.0,
+      "prop_address": "105 Equestrian Ct",
+      "prop_city": "San Marcos",
+      "prop_zip": "92069",
+      "lawyer": {
+        "name": "Brian M Malloy",
+        "address": "303 A St Ste 400",
+        "city": "San Diego",
+        "zip": "92101",
+        "phone": "619-595-1655",
+        "email": "bmalloy@rjalawfirm.com"
+      },
+      "petitioner_contact": {
+        "name": "Dulce Lopez",
+        "address": "105 Equestrain ct",
+        "city": "San Marcos",
+        "state": "Ca",
+        "zip": "92069",
+        "phone": "",
+        "relation": "Spouse Adult"
+      }
+    },
+    "analysis": {
+      "creative_cache": {
+        "lead_source": "Probate Court Records via J&J Services",
+        "property": "105 Equestrian Ct, San Marcos 92069",
+        "seller": "Dulce Lopez",
+        "situation": "The deceased's spouse, Dulce Lopez, has initiated probate for a high-value property with significant equity.",
+        "estimated_value": "$6,000,000",
+        "mortgage_info": "$3,000,000 encumbrance/mortgage",
+        "equity": "$4,050,000",
+        "motivation": "The spouse is likely dealing with the emotional burden of loss and the administrative complexities of probate, potentially seeking to liquidate assets.",
+        "subject_to_fit": "Possible",
+        "missing_info": "Mortgage terms (interest rate, payment, lender), other liens, seller's financial situation, and property condition.",
+        "suggested_strategy": "Needs Discovery",
+        "next_action": "Contact attorney Brian M Malloy to discuss the estate and property."
+      },
+      "seller_findings": {
+        "source": "Probate Court Records",
+        "key_findings": "Dulce Lopez, the spouse, is the petitioner and likely the primary heir. The property is high-value with substantial equity, indicating a significant asset in the estate. The probate was recently filed, suggesting the process is just beginning.",
+        "motivation": "To settle the estate, potentially manage financial obligations, or simplify life after loss by liquidating assets.",
+        "timeline": "Early stage of probate, likely 6-12 months to close, but could be expedited with a clear buyer.",
+        "property_condition": "Unknown \u2014 needs inspection",
+        "occupancy": "Likely occupied by the petitioner, Dulce Lopez, as her address matches the property.",
+        "pain_points": "Emotional stress of loss, financial burden of maintaining a large property, probate legal fees, and the administrative complexities of the probate process.",
+        "risks_red_flags": "High value property might attract multiple offers, potential for emotional attachment to the home, and the need to deal with the attorney as an intermediary.",
+        "recommended_approach": "Approach with empathy, focusing on providing a simple, quick solution to a complex situation."
+      },
+      "recommendation": {
+        "action": "Call attorney immediately",
+        "reason": "To understand the estate's needs, mortgage details, and gauge the seller's motivation and timeline through the legal representative."
+      },
+      "sms_draft": "Hi Dulce, this is Felix. I came across the estate of Onofre Garza Jr and wanted to reach out. Would you be open to a quick conversation about the property?"
+    },
+    "note": "\ud83d\udcc1 CASE #26PE001205C  |  Filed: 07-May-26  |  Passing: 04-May-26\n\u2696\ufe0f  Authority:   |  Executor/Admin: Administrator\n\n\u2550\u2550\u2550 CREATIVE CACHE \u2014 SUBJECT TO ANALYSIS \u2550\u2550\u2550\nLead Source:        Probate Court Records via J&J Services\nProperty:           105 Equestrian Ct, San Marcos 92069\nSeller:             Dulce Lopez\nSituation:          The deceased's spouse, Dulce Lopez, has initiated probate for a high-value property with significant equity.\nEstimated Value:    $6,000,000\nMortgage / Loan:    $3,000,000 encumbrance/mortgage\nEquity:             $4,050,000\nMotivation:         The spouse is likely dealing with the emotional burden of loss and the administrative complexities of probate, potentially seeking to liquidate assets.\nSubject To Fit:     Possible\nMissing Info:       Mortgage terms (interest rate, payment, lender), other liens, seller's financial situation, and property condition.\nSuggested Strategy: Needs Discovery\nNext Action:        Contact attorney Brian M Malloy to discuss the estate and property.\n\n\u2550\u2550\u2550 SELLER FINDINGS \u2550\u2550\u2550\nSource:              Probate Court Records\nKey Findings:        Dulce Lopez, the spouse, is the petitioner and likely the primary heir. The property is high-value with substantial equity, indicating a significant asset in the estate. The probate was recently filed, suggesting the process is just beginning.\nMotivation:          To settle the estate, potentially manage financial obligations, or simplify life after loss by liquidating assets.\nTimeline:            Early stage of probate, likely 6-12 months to close, but could be expedited with a clear buyer.\nProperty Condition:  Unknown \u2014 needs inspection\nOccupancy:           Likely occupied by the petitioner, Dulce Lopez, as her address matches the property.\nSeller Pain Points:  Emotional stress of loss, financial burden of maintaining a large property, probate legal fees, and the administrative complexities of the probate process.\nRisks / Red Flags:   High value property might attract multiple offers, potential for emotional attachment to the home, and the need to deal with the attorney as an intermediary.\nRecommended Approach:Approach with empathy, focusing on providing a simple, quick solution to a complex situation.\n\n\u2550\u2550\u2550 RECOMMENDATION \u2550\u2550\u2550\nAction: Call attorney immediately\nReason: To understand the estate's needs, mortgage details, and gauge the seller's motivation and timeline through the legal representative.\n\n\u2550\u2550\u2550 SMS DRAFT \u2550\u2550\u2550\nHi Dulce, this is Felix. I came across the estate of Onofre Garza Jr and wanted to reach out. Would you be open to a quick conversation about the property?\n\n\u2550\u2550\u2550 PROPERTY & FINANCIALS \u2550\u2550\u2550\nAddress:        105 Equestrian Ct, San Marcos 92069\nProperty Value: $6,000,000\nEncumbrances:   $3,000,000\nEquity:         $3,000,000\n\n\u2550\u2550\u2550 ATTORNEY \u2550\u2550\u2550\nBrian M Malloy\nPhone: 619-595-1655  |  Email: bmalloy@rjalawfirm.com\n303 A St Ste 400, San Diego 92101"
+  },
+  {
+    "lead": {
+      "case_number": "26PE001231C",
+      "date_entered": "14-May-26",
+      "date_filed": "12-May-26",
+      "deceased_name": "Michael John Gibbons AKA Michael J Gibbons AKA Michael Gibbons AKA Mike Gibbons",
+      "petitioner": "Deana Gibbons",
+      "exec_admin": "Administrator",
+      "authority": "Full",
+      "date_passing": "14-Feb-26",
+      "property_val": 412000.0,
+      "encumbrances": 290000.0,
+      "line7_total": 458673.0,
+      "rental_income": 0.0,
+      "prop_address": "2524 Erie St",
+      "prop_city": "San Diego",
+      "prop_zip": "92110",
+      "lawyer": {
+        "name": "Desiree J Vance",
+        "address": "P O Box 1081",
+        "city": "Oroville",
+        "zip": "95965",
+        "phone": "530-965-5672",
+        "email": "dvance@vance.law"
+      },
+      "petitioner_contact": {
+        "name": "Deana Gibbons",
+        "address": "463 Valley View Dr",
+        "city": "Paradise",
+        "state": "Ca",
+        "zip": "95969",
+        "phone": "530-774-6458",
+        "relation": "Mother Adult"
+      }
+    },
+    "analysis": {
+      "creative_cache": {
+        "lead_source": "Probate Court Records via J&J Services",
+        "property": "2524 Erie St, San Diego 92110",
+        "seller": "Deana Gibbons",
+        "situation": "The deceased's mother, Deana Gibbons, has recently filed for probate to administer the estate, which includes a property with significant equity.",
+        "estimated_value": "$412,000",
+        "mortgage_info": "$290,000",
+        "equity": "$122,000",
+        "motivation": "Deana is likely motivated to efficiently settle her son's estate and manage the property, potentially seeking a quick and hassle-free disposition.",
+        "subject_to_fit": "Possible",
+        "missing_info": "Property condition, occupancy status, exact mortgage terms (interest rate, payment), other liens, other heirs, and clarification on the stated 'Equity (Line 7 Total)' discrepancy.",
+        "suggested_strategy": "Needs Discovery",
+        "next_action": "Call Deana Gibbons to introduce ourselves and understand her situation and goals for the property."
+      },
+      "seller_findings": {
+        "source": "Probate Court Records",
+        "key_findings": "Deana Gibbons, the deceased's mother, is the petitioner and Administrator for the estate of Michael Gibbons, who passed away recently. The probate case was filed shortly after the passing, indicating she is actively managing the estate.",
+        "motivation": "Likely motivated to settle the estate efficiently, avoid carrying costs, and manage the emotional and logistical burden of property disposition.",
+        "timeline": "The probate case was filed recently (12-May-26), suggesting the process is in its early stages and the seller may be open to solutions soon.",
+        "property_condition": "Unknown \u2014 needs inspection",
+        "occupancy": "Unknown \u2014 needs verification",
+        "pain_points": "Emotional burden of loss, financial responsibility for the property (mortgage, taxes, upkeep), legal complexities of probate, and the logistical challenge of managing an out-of-area property.",
+        "risks_red_flags": "The stated 'Equity (Line 7 Total)' of $458,673 is significantly higher than the property's estimated value, creating a major discrepancy that needs clarification. The petitioner's out-of-area address (Paradise, CA vs. San Diego property) could pose logistical challenges or indicate a strong desire for a hands-off solution.",
+        "recommended_approach": "Approach with empathy, focusing on understanding her needs and offering solutions for a smooth estate settlement, highlighting convenience and speed."
+      },
+      "recommendation": {
+        "action": "Call immediately",
+        "reason": "The probate case is newly filed, indicating the seller is actively engaged and likely seeking solutions for the estate property, making her a warm lead."
+      },
+      "sms_draft": "Hi Deana, this is Felix. I came across the estate of Michael Gibbons and wanted to reach out regarding the property at 2524 Erie St. Would you be open to a quick conversation about it?"
+    },
+    "note": "\ud83d\udcc1 CASE #26PE001231C  |  Filed: 12-May-26  |  Passing: 14-Feb-26\n\u2696\ufe0f  Authority: Full  |  Executor/Admin: Administrator\n\n\u2550\u2550\u2550 CREATIVE CACHE \u2014 SUBJECT TO ANALYSIS \u2550\u2550\u2550\nLead Source:        Probate Court Records via J&J Services\nProperty:           2524 Erie St, San Diego 92110\nSeller:             Deana Gibbons\nSituation:          The deceased's mother, Deana Gibbons, has recently filed for probate to administer the estate, which includes a property with significant equity.\nEstimated Value:    $412,000\nMortgage / Loan:    $290,000\nEquity:             $122,000\nMotivation:         Deana is likely motivated to efficiently settle her son's estate and manage the property, potentially seeking a quick and hassle-free disposition.\nSubject To Fit:     Possible\nMissing Info:       Property condition, occupancy status, exact mortgage terms (interest rate, payment), other liens, other heirs, and clarification on the stated 'Equity (Line 7 Total)' discrepancy.\nSuggested Strategy: Needs Discovery\nNext Action:        Call Deana Gibbons to introduce ourselves and understand her situation and goals for the property.\n\n\u2550\u2550\u2550 SELLER FINDINGS \u2550\u2550\u2550\nSource:              Probate Court Records\nKey Findings:        Deana Gibbons, the deceased's mother, is the petitioner and Administrator for the estate of Michael Gibbons, who passed away recently. The probate case was filed shortly after the passing, indicating she is actively managing the estate.\nMotivation:          Likely motivated to settle the estate efficiently, avoid carrying costs, and manage the emotional and logistical burden of property disposition.\nTimeline:            The probate case was filed recently (12-May-26), suggesting the process is in its early stages and the seller may be open to solutions soon.\nProperty Condition:  Unknown \u2014 needs inspection\nOccupancy:           Unknown \u2014 needs verification\nSeller Pain Points:  Emotional burden of loss, financial responsibility for the property (mortgage, taxes, upkeep), legal complexities of probate, and the logistical challenge of managing an out-of-area property.\nRisks / Red Flags:   The stated 'Equity (Line 7 Total)' of $458,673 is significantly higher than the property's estimated value, creating a major discrepancy that needs clarification. The petitioner's out-of-area address (Paradise, CA vs. San Diego property) could pose logistical challenges or indicate a strong desire for a hands-off solution.\nRecommended Approach:Approach with empathy, focusing on understanding her needs and offering solutions for a smooth estate settlement, highlighting convenience and speed.\n\n\u2550\u2550\u2550 RECOMMENDATION \u2550\u2550\u2550\nAction: Call immediately\nReason: The probate case is newly filed, indicating the seller is actively engaged and likely seeking solutions for the estate property, making her a warm lead.\n\n\u2550\u2550\u2550 SMS DRAFT \u2550\u2550\u2550\nHi Deana, this is Felix. I came across the estate of Michael Gibbons and wanted to reach out regarding the property at 2524 Erie St. Would you be open to a quick conversation about it?\n\n\u2550\u2550\u2550 PROPERTY & FINANCIALS \u2550\u2550\u2550\nAddress:        2524 Erie St, San Diego 92110\nProperty Value: $412,000\nEncumbrances:   $290,000\nEquity:         $122,000\n\n\u2550\u2550\u2550 ATTORNEY \u2550\u2550\u2550\nDesiree J Vance\nPhone: 530-965-5672  |  Email: dvance@vance.law\nP O Box 1081, Oroville 95965"
+  },
+  {
+    "lead": {
+      "case_number": "26PE001251C",
+      "date_entered": "14-May-26",
+      "date_filed": "08-May-26",
+      "deceased_name": "Arthur Manuel Mendez",
+      "petitioner": "Michelle Schneider",
+      "exec_admin": "Administrator",
+      "authority": "Full",
+      "date_passing": "14-Apr-26",
+      "property_val": 900000.0,
+      "encumbrances": 0.0,
+      "line7_total": 900000.0,
+      "rental_income": 0.0,
+      "prop_address": "1337 31st St",
+      "prop_city": "San Diego",
+      "prop_zip": "92102",
+      "lawyer": {
+        "name": "Scott C Soady",
+        "address": "16466 Bernardo Center Dr Ste 260",
+        "city": "San Diego",
+        "zip": "92128",
+        "phone": "858-618-5510",
+        "email": "scott@help411.com"
+      },
+      "petitioner_contact": {
+        "name": "Michelle Schneider",
+        "address": "503 Silvery Ln",
+        "city": "El Cajon",
+        "state": "Ca",
+        "zip": "92020",
+        "phone": "619-654-5522",
+        "relation": "Daughter Adult"
+      }
+    },
+    "analysis": {
+      "creative_cache": {
+        "lead_source": "Probate Court Records via J&J Services",
+        "property": "1337 31st St, San Diego 92102",
+        "seller": "Michelle Schneider",
+        "situation": "The deceased's daughter is petitioning to administer an estate with a valuable, unencumbered property.",
+        "estimated_value": "$900,000",
+        "mortgage_info": "$0",
+        "equity": "$900,000",
+        "motivation": "The petitioner likely wants to liquidate the asset to distribute inheritance or cover estate expenses.",
+        "subject_to_fit": "Not enough info",
+        "missing_info": "Current occupancy, property condition, specific reasons for probate, petitioner's urgency, and their financial goals.",
+        "suggested_strategy": "Needs Discovery",
+        "next_action": "Contact Michelle Schneider to understand her goals and the estate's needs."
+      },
+      "seller_findings": {
+        "source": "Probate Court Records",
+        "key_findings": "Michelle Schneider is the adult daughter of the deceased, Arthur Manuel Mendez, and is the petitioner for the estate. The property has significant equity with no mortgage.",
+        "motivation": "Likely to settle the estate, distribute assets to heirs, and avoid the ongoing costs and responsibilities of an inherited property.",
+        "timeline": "Probate was filed on 08-May-26, making this a fresh filing; the process is just beginning and will likely take several months.",
+        "property_condition": "Unknown \u2014 needs inspection",
+        "occupancy": "Unknown \u2014 needs verification",
+        "pain_points": "Emotional stress of losing a parent, financial burden of maintaining an empty property, legal complexities of probate, and the desire for a quick, hassle-free sale.",
+        "risks_red_flags": "No immediate red flags; 'Full Authority' is beneficial for a swift transaction.",
+        "recommended_approach": "Approach with empathy, offering a solution that simplifies the probate process and provides a fair, quick sale."
+      },
+      "recommendation": {
+        "action": "Call immediately",
+        "reason": "High equity and a fresh probate filing indicate a motivated seller who needs to liquidate an asset, making immediate contact crucial."
+      },
+      "sms_draft": "Hi Michelle, this is Felix. I came across the estate of Arthur Manuel Mendez and wanted to reach out. Would you be open to a quick conversation about the property?"
+    },
+    "note": "\ud83d\udcc1 CASE #26PE001251C  |  Filed: 08-May-26  |  Passing: 14-Apr-26\n\u2696\ufe0f  Authority: Full  |  Executor/Admin: Administrator\n\n\u2550\u2550\u2550 CREATIVE CACHE \u2014 SUBJECT TO ANALYSIS \u2550\u2550\u2550\nLead Source:        Probate Court Records via J&J Services\nProperty:           1337 31st St, San Diego 92102\nSeller:             Michelle Schneider\nSituation:          The deceased's daughter is petitioning to administer an estate with a valuable, unencumbered property.\nEstimated Value:    $900,000\nMortgage / Loan:    $0\nEquity:             $900,000\nMotivation:         The petitioner likely wants to liquidate the asset to distribute inheritance or cover estate expenses.\nSubject To Fit:     Not enough info\nMissing Info:       Current occupancy, property condition, specific reasons for probate, petitioner's urgency, and their financial goals.\nSuggested Strategy: Needs Discovery\nNext Action:        Contact Michelle Schneider to understand her goals and the estate's needs.\n\n\u2550\u2550\u2550 SELLER FINDINGS \u2550\u2550\u2550\nSource:              Probate Court Records\nKey Findings:        Michelle Schneider is the adult daughter of the deceased, Arthur Manuel Mendez, and is the petitioner for the estate. The property has significant equity with no mortgage.\nMotivation:          Likely to settle the estate, distribute assets to heirs, and avoid the ongoing costs and responsibilities of an inherited property.\nTimeline:            Probate was filed on 08-May-26, making this a fresh filing; the process is just beginning and will likely take several months.\nProperty Condition:  Unknown \u2014 needs inspection\nOccupancy:           Unknown \u2014 needs verification\nSeller Pain Points:  Emotional stress of losing a parent, financial burden of maintaining an empty property, legal complexities of probate, and the desire for a quick, hassle-free sale.\nRisks / Red Flags:   No immediate red flags; 'Full Authority' is beneficial for a swift transaction.\nRecommended Approach:Approach with empathy, offering a solution that simplifies the probate process and provides a fair, quick sale.\n\n\u2550\u2550\u2550 RECOMMENDATION \u2550\u2550\u2550\nAction: Call immediately\nReason: High equity and a fresh probate filing indicate a motivated seller who needs to liquidate an asset, making immediate contact crucial.\n\n\u2550\u2550\u2550 SMS DRAFT \u2550\u2550\u2550\nHi Michelle, this is Felix. I came across the estate of Arthur Manuel Mendez and wanted to reach out. Would you be open to a quick conversation about the property?\n\n\u2550\u2550\u2550 PROPERTY & FINANCIALS \u2550\u2550\u2550\nAddress:        1337 31st St, San Diego 92102\nProperty Value: $900,000\nEncumbrances:   $0\nEquity:         $900,000\n\n\u2550\u2550\u2550 ATTORNEY \u2550\u2550\u2550\nScott C Soady\nPhone: 858-618-5510  |  Email: scott@help411.com\n16466 Bernardo Center Dr Ste 260, San Diego 92128"
+  },
+  {
+    "lead": {
+      "case_number": "26PE001257C",
+      "date_entered": "14-May-26",
+      "date_filed": "13-May-26",
+      "deceased_name": "Gerald Paz Tovar",
+      "petitioner": "Gerald P Tovar AKA Gerald P Tovar Jr",
+      "exec_admin": "Administrator",
+      "authority": "Full",
+      "date_passing": "20-Apr-23",
+      "property_val": 350000.0,
+      "encumbrances": 0.0,
+      "line7_total": 350000.0,
+      "rental_income": 0.0,
+      "prop_address": "1270 Far Valley Rd",
+      "prop_city": "Campo",
+      "prop_zip": "91906",
+      "lawyer": {
+        "name": "Steve Wedeking",
+        "address": "9570 Cuyamaca St Ste 103",
+        "city": "Santee",
+        "zip": "92071",
+        "phone": "619-663-8428",
+        "email": "lawfirm@wedekinglaw.com"
+      },
+      "petitioner_contact": {
+        "name": "Gerald P Tovar AKA Gerald P Tovar Jr",
+        "address": "12063 N 2nd St",
+        "city": "Parker",
+        "state": "Co",
+        "zip": "80134",
+        "phone": "719-339-1008",
+        "relation": "Child"
+      }
+    },
+    "analysis": {
+      "creative_cache": {
+        "lead_source": "Probate Court Records",
+        "property": "1270 Far Valley Rd, Campo 91906",
+        "seller": "Gerald P Tovar AKA Gerald P Tovar Jr",
+        "situation": "Deceased's child is the petitioner for a property with full equity, with the probate case filed in the future (2026) despite the death occurring in 2023.",
+        "estimated_value": "$350,000",
+        "mortgage_info": "$0",
+        "equity": "$350,000",
+        "motivation": "Petitioner likely needs to settle the estate and liquidate the property, potentially facing delays or planning for a future probate filing.",
+        "subject_to_fit": "Not applicable",
+        "missing_info": "Property condition, occupancy, specific reason for delayed/future probate filing, seller's specific goals and timeline.",
+        "suggested_strategy": "Cash Offer / Seller Finance / Needs Discovery",
+        "next_action": "Contact petitioner to understand the current status of the estate and their plans for the property, especially regarding the future filing date."
+      },
+      "seller_findings": {
+        "source": "Probate Court Records",
+        "key_findings": "Gerald P Tovar Jr. is the child of the deceased, acting as petitioner/administrator for a property with full equity. The probate case is listed as filed in 2026, nearly three years after the date of passing in 2023.",
+        "motivation": "The petitioner likely needs to settle the estate and liquidate the property, potentially facing delays in the probate process or planning for a future filing.",
+        "timeline": "Case filed 13-May-26, almost three years after the date of passing (20-Apr-23). This indicates a significant delay in filing probate or a future planned filing.",
+        "property_condition": "Unknown \u2014 needs inspection",
+        "occupancy": "Unknown \u2014 needs verification",
+        "pain_points": "Potential stress from a delayed probate process, property upkeep during the interim, legal complexities, and the need to eventually liquidate the asset.",
+        "risks_red_flags": "The significant gap between the date of passing (2023) and the listed filing date (2026) is a major red flag, indicating the probate process has not officially begun or is severely delayed. This needs immediate clarification.",
+        "recommended_approach": "Direct communication to understand the reason for the delayed/future filing and the petitioner's current plans for the property."
+      },
+      "recommendation": {
+        "action": "Call immediately",
+        "reason": "To clarify the unusual probate timeline and understand the petitioner's immediate needs and intentions regarding the property."
+      },
+      "sms_draft": "Hi [Seller], this is Felix. I came across the estate of [deceased] and wanted to reach out. Would you be open to a quick conversation about the property?"
+    },
+    "note": "\ud83d\udcc1 CASE #26PE001257C  |  Filed: 13-May-26  |  Passing: 20-Apr-23\n\u2696\ufe0f  Authority: Full  |  Executor/Admin: Administrator\n\n\u2550\u2550\u2550 CREATIVE CACHE \u2014 SUBJECT TO ANALYSIS \u2550\u2550\u2550\nLead Source:        Probate Court Records\nProperty:           1270 Far Valley Rd, Campo 91906\nSeller:             Gerald P Tovar AKA Gerald P Tovar Jr\nSituation:          Deceased's child is the petitioner for a property with full equity, with the probate case filed in the future (2026) despite the death occurring in 2023.\nEstimated Value:    $350,000\nMortgage / Loan:    $0\nEquity:             $350,000\nMotivation:         Petitioner likely needs to settle the estate and liquidate the property, potentially facing delays or planning for a future probate filing.\nSubject To Fit:     Not applicable\nMissing Info:       Property condition, occupancy, specific reason for delayed/future probate filing, seller's specific goals and timeline.\nSuggested Strategy: Cash Offer / Seller Finance / Needs Discovery\nNext Action:        Contact petitioner to understand the current status of the estate and their plans for the property, especially regarding the future filing date.\n\n\u2550\u2550\u2550 SELLER FINDINGS \u2550\u2550\u2550\nSource:              Probate Court Records\nKey Findings:        Gerald P Tovar Jr. is the child of the deceased, acting as petitioner/administrator for a property with full equity. The probate case is listed as filed in 2026, nearly three years after the date of passing in 2023.\nMotivation:          The petitioner likely needs to settle the estate and liquidate the property, potentially facing delays in the probate process or planning for a future filing.\nTimeline:            Case filed 13-May-26, almost three years after the date of passing (20-Apr-23). This indicates a significant delay in filing probate or a future planned filing.\nProperty Condition:  Unknown \u2014 needs inspection\nOccupancy:           Unknown \u2014 needs verification\nSeller Pain Points:  Potential stress from a delayed probate process, property upkeep during the interim, legal complexities, and the need to eventually liquidate the asset.\nRisks / Red Flags:   The significant gap between the date of passing (2023) and the listed filing date (2026) is a major red flag, indicating the probate process has not officially begun or is severely delayed. This needs immediate clarification.\nRecommended Approach:Direct communication to understand the reason for the delayed/future filing and the petitioner's current plans for the property.\n\n\u2550\u2550\u2550 RECOMMENDATION \u2550\u2550\u2550\nAction: Call immediately\nReason: To clarify the unusual probate timeline and understand the petitioner's immediate needs and intentions regarding the property.\n\n\u2550\u2550\u2550 SMS DRAFT \u2550\u2550\u2550\nHi [Seller], this is Felix. I came across the estate of [deceased] and wanted to reach out. Would you be open to a quick conversation about the property?\n\n\u2550\u2550\u2550 PROPERTY & FINANCIALS \u2550\u2550\u2550\nAddress:        1270 Far Valley Rd, Campo 91906\nProperty Value: $350,000\nEncumbrances:   $0\nEquity:         $350,000\n\n\u2550\u2550\u2550 ATTORNEY \u2550\u2550\u2550\nSteve Wedeking\nPhone: 619-663-8428  |  Email: lawfirm@wedekinglaw.com\n9570 Cuyamaca St Ste 103, Santee 92071"
+  },
+  {
+    "lead": {
+      "case_number": "26PE001260C",
+      "date_entered": "14-May-26",
+      "date_filed": "07-May-26",
+      "deceased_name": "Maria Eva Ballow",
+      "petitioner": "Manfred Finke AKA Manfred Alfred Finke",
+      "exec_admin": "Executor",
+      "authority": "Full",
+      "date_passing": "07-Jan-26",
+      "property_val": 800000.0,
+      "encumbrances": 439426.0,
+      "line7_total": 615573.0,
+      "rental_income": 0.0,
+      "prop_address": "1005 Paraiso Av",
+      "prop_city": "Spring Valley",
+      "prop_zip": "91977",
+      "lawyer": {
+        "name": "Samuel McGovern and Sophia Gallardo",
+        "address": "9320 Fuerte Dr Ste 100",
+        "city": "La Mesa",
+        "zip": "91941",
+        "phone": "619-344-0123",
+        "email": "sam@mcgovernlawgroup.com"
+      },
+      "petitioner_contact": {
+        "name": "Manfred Finke AKA Manfred Alfred Finke",
+        "address": "10668 Challenge Bv",
+        "city": "La Mesa",
+        "state": "Ca",
+        "zip": "91941",
+        "phone": "213-590-2738",
+        "relation": "Nephew Adult"
+      }
+    },
+    "analysis": {
+      "creative_cache": {
+        "lead_source": "Probate Court Records via J&J Services",
+        "property": "1005 Paraiso Av, Spring Valley 91977",
+        "seller": "Manfred Finke AKA Manfred Alfred Finke",
+        "situation": "The estate of Maria Eva Ballow is in probate, with her nephew Manfred Finke acting as petitioner and executor for a property with significant equity and an existing mortgage.",
+        "estimated_value": "$800,000",
+        "mortgage_info": "$439,426 encumbrance/mortgage",
+        "equity": "$360,574",
+        "motivation": "The petitioner likely seeks to liquidate the property to settle the estate, cover probate costs, and distribute inheritance efficiently.",
+        "subject_to_fit": "Likely",
+        "missing_info": "Property condition, occupancy status, specific mortgage terms (interest rate, payment), other potential liens, and the seller's specific timeline and desired outcome.",
+        "suggested_strategy": "SubTo / Cash Offer / Needs Discovery",
+        "next_action": "Contact petitioner and attorney to gather more information and understand their needs."
+      },
+      "seller_findings": {
+        "source": "Probate Court Records",
+        "key_findings": "Manfred Finke, the nephew, is the petitioner and executor with full authority, indicating a streamlined decision-making process. The estate was filed relatively recently, about four months after the date of passing.",
+        "motivation": "The primary motivation is likely to efficiently close the estate, distribute assets to heirs, and avoid ongoing property carrying costs and probate expenses.",
+        "timeline": "The probate case was filed 4 months after passing, suggesting the process is still relatively early; resolution could take 6-18 months.",
+        "property_condition": "Unknown \u2014 needs inspection",
+        "occupancy": "Unknown \u2014 needs verification",
+        "pain_points": "Potential for legal fees, property maintenance costs, emotional burden of managing an inherited property, and the desire for a swift, hassle-free resolution to the estate.",
+        "risks_red_flags": "No immediate red flags; full authority granted to the executor simplifies negotiations.",
+        "recommended_approach": "Approach with empathy, offering solutions that provide speed, convenience, and financial relief to help close the estate efficiently."
+      },
+      "recommendation": {
+        "action": "Call immediately",
+        "reason": "Early stage of probate, high equity, and clear contact information for both the executor and legal counsel make this a prime opportunity for a proactive outreach."
+      },
+      "sms_draft": "Hi Manfred, this is Felix. I came across the estate of Maria Eva Ballow and wanted to reach out. Would you be open to a quick conversation about the property?"
+    },
+    "note": "\ud83d\udcc1 CASE #26PE001260C  |  Filed: 07-May-26  |  Passing: 07-Jan-26\n\u2696\ufe0f  Authority: Full  |  Executor/Admin: Executor\n\n\u2550\u2550\u2550 CREATIVE CACHE \u2014 SUBJECT TO ANALYSIS \u2550\u2550\u2550\nLead Source:        Probate Court Records via J&J Services\nProperty:           1005 Paraiso Av, Spring Valley 91977\nSeller:             Manfred Finke AKA Manfred Alfred Finke\nSituation:          The estate of Maria Eva Ballow is in probate, with her nephew Manfred Finke acting as petitioner and executor for a property with significant equity and an existing mortgage.\nEstimated Value:    $800,000\nMortgage / Loan:    $439,426 encumbrance/mortgage\nEquity:             $360,574\nMotivation:         The petitioner likely seeks to liquidate the property to settle the estate, cover probate costs, and distribute inheritance efficiently.\nSubject To Fit:     Likely\nMissing Info:       Property condition, occupancy status, specific mortgage terms (interest rate, payment), other potential liens, and the seller's specific timeline and desired outcome.\nSuggested Strategy: SubTo / Cash Offer / Needs Discovery\nNext Action:        Contact petitioner and attorney to gather more information and understand their needs.\n\n\u2550\u2550\u2550 SELLER FINDINGS \u2550\u2550\u2550\nSource:              Probate Court Records\nKey Findings:        Manfred Finke, the nephew, is the petitioner and executor with full authority, indicating a streamlined decision-making process. The estate was filed relatively recently, about four months after the date of passing.\nMotivation:          The primary motivation is likely to efficiently close the estate, distribute assets to heirs, and avoid ongoing property carrying costs and probate expenses.\nTimeline:            The probate case was filed 4 months after passing, suggesting the process is still relatively early; resolution could take 6-18 months.\nProperty Condition:  Unknown \u2014 needs inspection\nOccupancy:           Unknown \u2014 needs verification\nSeller Pain Points:  Potential for legal fees, property maintenance costs, emotional burden of managing an inherited property, and the desire for a swift, hassle-free resolution to the estate.\nRisks / Red Flags:   No immediate red flags; full authority granted to the executor simplifies negotiations.\nRecommended Approach:Approach with empathy, offering solutions that provide speed, convenience, and financial relief to help close the estate efficiently.\n\n\u2550\u2550\u2550 RECOMMENDATION \u2550\u2550\u2550\nAction: Call immediately\nReason: Early stage of probate, high equity, and clear contact information for both the executor and legal counsel make this a prime opportunity for a proactive outreach.\n\n\u2550\u2550\u2550 SMS DRAFT \u2550\u2550\u2550\nHi Manfred, this is Felix. I came across the estate of Maria Eva Ballow and wanted to reach out. Would you be open to a quick conversation about the property?\n\n\u2550\u2550\u2550 PROPERTY & FINANCIALS \u2550\u2550\u2550\nAddress:        1005 Paraiso Av, Spring Valley 91977\nProperty Value: $800,000\nEncumbrances:   $439,426\nEquity:         $360,574\n\n\u2550\u2550\u2550 ATTORNEY \u2550\u2550\u2550\nSamuel McGovern and Sophia Gallardo\nPhone: 619-344-0123  |  Email: sam@mcgovernlawgroup.com\n9320 Fuerte Dr Ste 100, La Mesa 91941"
+  },
+  {
+    "lead": {
+      "case_number": "26PE001262C",
+      "date_entered": "14-May-26",
+      "date_filed": "08-May-26",
+      "deceased_name": "Carol Legarra AKA Carol S Legarra AKA Carol Suzanne Lecarra",
+      "petitioner": "Larry Edward Piland",
+      "exec_admin": "Executor",
+      "authority": "Full",
+      "date_passing": "15-Nov-22",
+      "property_val": 800000.0,
+      "encumbrances": 0.0,
+      "line7_total": 800000.0,
+      "rental_income": 0.0,
+      "prop_address": "5353 Mt Burnham Dr",
+      "prop_city": "San Diego",
+      "prop_zip": "92111",
+      "lawyer": {
+        "name": "Tara L Shaw",
+        "address": "1437 Morena Bv Ste 203",
+        "city": "San Diego",
+        "zip": "92110",
+        "phone": "619-431-1083",
+        "email": "estates@shawlegaloffice.com"
+      },
+      "petitioner_contact": {
+        "name": "Larry Edward Piland",
+        "address": "5353 Mt Burnham Dr",
+        "city": "San Diego",
+        "state": "Ca",
+        "zip": "92111",
+        "phone": "614-843-2423",
+        "relation": "Son Adult"
+      }
+    },
+    "analysis": {
+      "creative_cache": {
+        "lead_source": "Probate Court Records via J&J Services",
+        "property": "5353 Mt Burnham Dr, San Diego 92111",
+        "seller": "Larry Edward Piland",
+        "situation": "Carol Legarra passed away, and her son, Larry Piland, is petitioning to be the executor of her estate, which includes a valuable property with no mortgage.",
+        "estimated_value": "$800,000",
+        "mortgage_info": "$0",
+        "equity": "$800,000",
+        "motivation": "The son is likely motivated to settle the estate efficiently, potentially to access inheritance or avoid ongoing property responsibilities.",
+        "subject_to_fit": "Not enough info",
+        "missing_info": "Current occupancy, property condition, Larry's specific goals for the property, other heirs, and any other estate debts.",
+        "suggested_strategy": "Cash Offer / Seller Finance / Needs Discovery",
+        "next_action": "Contact Larry Piland to understand his goals for the property and the estate."
+      },
+      "seller_findings": {
+        "source": "Probate Court Records",
+        "key_findings": "Larry Piland is the adult son and petitioner, residing at the property address. The estate has full authority and significant equity with no mortgage. The probate case was filed in May 2026, but the date of passing was Nov 2022, indicating a significant delay in filing or processing.",
+        "motivation": "Larry likely wants to settle his mother's estate, potentially to liquidate assets, distribute inheritance, or avoid the burden of an inherited property.",
+        "timeline": "The significant delay between the date of passing (Nov 2022) and the filing date (May 2026) suggests a desire for resolution after a prolonged period.",
+        "property_condition": "Unknown \u2014 needs inspection",
+        "occupancy": "Unknown \u2014 needs verification",
+        "pain_points": "The burden of probate administration, potential property upkeep costs, emotional attachment, and the desire for a quick, hassle-free resolution, especially given the delay in filing.",
+        "risks_red_flags": "The significant gap between the date of passing and the filing date is a red flag, potentially indicating prior complications, family disputes, or attempts to avoid probate. Larry living at the property could also complicate a sale if he needs to relocate.",
+        "recommended_approach": "Approach with empathy, focusing on understanding Larry's specific needs and the estate's challenges to offer a tailored solution."
+      },
+      "recommendation": {
+        "action": "Call immediately",
+        "reason": "The property has significant equity, no mortgage, and the petitioner is directly contactable, making it a high-potential lead for a quick resolution."
+      },
+      "sms_draft": "Hi Larry Edward Piland, this is Felix. I came across the estate of Carol Legarra and wanted to reach out. Would you be open to a quick conversation about the property?"
+    },
+    "note": "\ud83d\udcc1 CASE #26PE001262C  |  Filed: 08-May-26  |  Passing: 15-Nov-22\n\u2696\ufe0f  Authority: Full  |  Executor/Admin: Executor\n\n\u2550\u2550\u2550 CREATIVE CACHE \u2014 SUBJECT TO ANALYSIS \u2550\u2550\u2550\nLead Source:        Probate Court Records via J&J Services\nProperty:           5353 Mt Burnham Dr, San Diego 92111\nSeller:             Larry Edward Piland\nSituation:          Carol Legarra passed away, and her son, Larry Piland, is petitioning to be the executor of her estate, which includes a valuable property with no mortgage.\nEstimated Value:    $800,000\nMortgage / Loan:    $0\nEquity:             $800,000\nMotivation:         The son is likely motivated to settle the estate efficiently, potentially to access inheritance or avoid ongoing property responsibilities.\nSubject To Fit:     Not enough info\nMissing Info:       Current occupancy, property condition, Larry's specific goals for the property, other heirs, and any other estate debts.\nSuggested Strategy: Cash Offer / Seller Finance / Needs Discovery\nNext Action:        Contact Larry Piland to understand his goals for the property and the estate.\n\n\u2550\u2550\u2550 SELLER FINDINGS \u2550\u2550\u2550\nSource:              Probate Court Records\nKey Findings:        Larry Piland is the adult son and petitioner, residing at the property address. The estate has full authority and significant equity with no mortgage. The probate case was filed in May 2026, but the date of passing was Nov 2022, indicating a significant delay in filing or processing.\nMotivation:          Larry likely wants to settle his mother's estate, potentially to liquidate assets, distribute inheritance, or avoid the burden of an inherited property.\nTimeline:            The significant delay between the date of passing (Nov 2022) and the filing date (May 2026) suggests a desire for resolution after a prolonged period.\nProperty Condition:  Unknown \u2014 needs inspection\nOccupancy:           Unknown \u2014 needs verification\nSeller Pain Points:  The burden of probate administration, potential property upkeep costs, emotional attachment, and the desire for a quick, hassle-free resolution, especially given the delay in filing.\nRisks / Red Flags:   The significant gap between the date of passing and the filing date is a red flag, potentially indicating prior complications, family disputes, or attempts to avoid probate. Larry living at the property could also complicate a sale if he needs to relocate.\nRecommended Approach:Approach with empathy, focusing on understanding Larry's specific needs and the estate's challenges to offer a tailored solution.\n\n\u2550\u2550\u2550 RECOMMENDATION \u2550\u2550\u2550\nAction: Call immediately\nReason: The property has significant equity, no mortgage, and the petitioner is directly contactable, making it a high-potential lead for a quick resolution.\n\n\u2550\u2550\u2550 SMS DRAFT \u2550\u2550\u2550\nHi Larry Edward Piland, this is Felix. I came across the estate of Carol Legarra and wanted to reach out. Would you be open to a quick conversation about the property?\n\n\u2550\u2550\u2550 PROPERTY & FINANCIALS \u2550\u2550\u2550\nAddress:        5353 Mt Burnham Dr, San Diego 92111\nProperty Value: $800,000\nEncumbrances:   $0\nEquity:         $800,000\n\n\u2550\u2550\u2550 ATTORNEY \u2550\u2550\u2550\nTara L Shaw\nPhone: 619-431-1083  |  Email: estates@shawlegaloffice.com\n1437 Morena Bv Ste 203, San Diego 92110"
+  }
+]
