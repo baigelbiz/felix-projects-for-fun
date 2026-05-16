@@ -4,3 +4,5 @@
 __pycache__/
 *.pyc
 *.log
+gmail_token.json
+gmail_credentials.json
