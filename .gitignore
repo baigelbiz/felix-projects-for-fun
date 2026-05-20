@@ -6,3 +6,4 @@ __pycache__/
 *.log
 gmail_token.json
 gmail_credentials.json
+linkedin_token.json
