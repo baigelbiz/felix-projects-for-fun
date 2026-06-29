@@ -1,0 +1,12 @@
+{
+  "name": "shefa-free-leads",
+  "version": "1.0.0",
+  "description": "Seller cash-offer landing page that creates leads in Close CRM.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

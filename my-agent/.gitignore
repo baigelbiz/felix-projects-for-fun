@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+node_modules/
+.wwebjs_auth/
+.wwebjs_cache/
+qr.png
+.whatsapp_session

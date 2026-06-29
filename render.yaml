@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: shefa-free-leads
+    runtime: node
+    plan: free
+    buildCommand: ""
+    startCommand: node server.js
+    envVars:
+      - key: CLOSE_API_KEY
+        sync: false   # set this manually in the Render dashboard (secret)

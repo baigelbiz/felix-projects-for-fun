@@ -1,0 +1,105 @@
+{
+  "_comment": "Test the Claude prompt standalone. POST each test_input to https://api.anthropic.com/v1/messages. Validate response against expected.",
+  "how_to_run": "curl https://api.anthropic.com/v1/messages -H 'x-api-key: YOUR_KEY' -H 'anthropic-version: 2023-06-01' -H 'content-type: application/json' -d '<test_input block>'",
+  "tests": [
+    {
+      "id": "TC-01",
+      "label": "DNC — explicit stop request",
+      "sms": "Stop texting me. Remove me from your list.",
+      "expected": { "classification": "dnc", "confidence": { "gte": 95 } }
+    },
+    {
+      "id": "TC-02",
+      "label": "DNC — angry variant",
+      "sms": "DO NOT CONTACT ME AGAIN",
+      "expected": { "classification": "dnc", "confidence": { "gte": 95 } }
+    },
+    {
+      "id": "TC-03",
+      "label": "Not interested — polite decline",
+      "sms": "Thanks but we're not looking to sell right now.",
+      "expected": { "classification": "not_interested", "confidence": { "gte": 85 } }
+    },
+    {
+      "id": "TC-04",
+      "label": "Not interested — firm",
+      "sms": "Not interested. Please don't reach out again.",
+      "expected": { "classification": "not_interested", "confidence": { "gte": 90 } }
+    },
+    {
+      "id": "TC-05",
+      "label": "Maybe later — timing objection",
+      "sms": "Not ready yet but maybe in 6 months or so. Check back with me then.",
+      "expected": { "classification": "maybe_later", "confidence": { "gte": 85 } }
+    },
+    {
+      "id": "TC-06",
+      "label": "Maybe later — vague future",
+      "sms": "We might sell eventually but not anytime soon.",
+      "expected": { "classification": "maybe_later", "confidence": { "gte": 75 } }
+    },
+    {
+      "id": "TC-07",
+      "label": "Price fishing — valuation ask",
+      "sms": "What would you offer for it? Just curious what investors pay these days.",
+      "expected": { "classification": "price_fishing", "confidence": { "gte": 80 } }
+    },
+    {
+      "id": "TC-08",
+      "label": "Price fishing — market value ask",
+      "sms": "What do you think my house is worth?",
+      "expected": { "classification": "price_fishing", "confidence": { "gte": 85 } }
+    },
+    {
+      "id": "TC-09",
+      "label": "Interested — engaged, asking questions",
+      "sms": "Yeah I've been thinking about selling. How does your process work?",
+      "expected": { "classification": "interested", "confidence": { "gte": 80 } }
+    },
+    {
+      "id": "TC-10",
+      "label": "Interested — open reply",
+      "sms": "Sure, I'm open to talking. When can you call?",
+      "expected": { "classification": "interested", "confidence": { "gte": 85 } }
+    },
+    {
+      "id": "TC-11",
+      "label": "Motivated — life event",
+      "sms": "We're going through a divorce and need to sell the house. Trying to figure out our options.",
+      "expected": { "classification": "motivated", "confidence": { "gte": 85 } }
+    },
+    {
+      "id": "TC-12",
+      "label": "Motivated — behind on payments",
+      "sms": "I've been behind on my mortgage for a few months and really need to get out from under this.",
+      "expected": { "classification": "motivated", "confidence": { "gte": 88 } }
+    },
+    {
+      "id": "TC-13",
+      "label": "Urgent — foreclosure",
+      "sms": "I got a foreclosure notice and I have 30 days. Need to sell asap.",
+      "expected": { "classification": "urgent", "confidence": { "gte": 93 } }
+    },
+    {
+      "id": "TC-14",
+      "label": "Urgent — hard deadline",
+      "sms": "I need this sold before the end of the month. Already moved out.",
+      "expected": { "classification": "urgent", "confidence": { "gte": 90 } }
+    },
+    {
+      "id": "TC-15",
+      "label": "Ambiguous — short reply",
+      "sms": "Ok",
+      "expected": { "classification": "interested", "confidence": { "lte": 55 } }
+    },
+    {
+      "id": "TC-16",
+      "label": "Ambiguous — question about who we are",
+      "sms": "Who is this?",
+      "expected": {
+        "classification": { "oneOf": ["interested", "price_fishing", "maybe_later"] },
+        "confidence": { "lte": 60 }
+      }
+    }
+  ]
+}

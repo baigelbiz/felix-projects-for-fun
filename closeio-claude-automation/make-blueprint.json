@@ -1,0 +1,125 @@
+{
+  "name": "Inbound SMS Classification — Close.io + Claude",
+  "flow": [
+    {
+      "id": 1,
+      "module": "gateway:CustomWebHook",
+      "version": 1,
+      "parameters": {
+        "hook": "REPLACE_WITH_MAKE_WEBHOOK_ID",
+        "maxResults": 1
+      },
+      "mapper": {},
+      "metadata": {
+        "designer": { "x": 0, "y": 0 },
+        "restore": {
+          "hook": {
+            "label": "Close.io Activity Webhook"
+          }
+        }
+      }
+    },
+    {
+      "id": 2,
+      "module": "http:ActionSendData",
+      "version": 3,
+      "parameters": { "handleErrors": true },
+      "filter": {
+        "name": "Inbound SMS only",
+        "conditions": [
+          [
+            {
+              "a": "{{1.data._type}}",
+              "b": "SMS",
+              "o": "text:equal"
+            },
+            {
+              "a": "{{1.data.direction}}",
+              "b": "inbound",
+              "o": "text:equal"
+            }
+          ]
+        ]
+      },
+      "mapper": {
+        "url": "https://api.anthropic.com/v1/messages",
+        "method": "post",
+        "headers": [
+          { "name": "x-api-key",          "value": "REPLACE_CLAUDE_API_KEY" },
+          { "name": "anthropic-version",   "value": "2023-06-01" },
+          { "name": "content-type",        "value": "application/json" }
+        ],
+        "bodyType": "raw",
+        "contentType": "application/json",
+        "body": "{\n  \"model\": \"claude-sonnet-4-6\",\n  \"max_tokens\": 64,\n  \"system\": \"You are a real estate SMS classification engine. Read the inbound seller SMS and return a raw JSON object with exactly two fields:\\n{\\n  \\\"classification\\\": \\\"<not_interested|dnc|maybe_later|price_fishing|interested|motivated|urgent>\\\",\\n  \\\"confidence\\\": <integer 1-100>\\n}\\n\\nDefinitions:\\n- not_interested: politely declining, not looking to sell\\n- dnc: explicitly asks to stop contact, remove from list\\n- maybe_later: open to selling but not now, timing objection\\n- price_fishing: asking what you'd offer or what the house is worth, no real intent yet\\n- interested: actively wants to explore selling, asking real questions\\n- motivated: clear pain or life event driving the sale\\n- urgent: needs to sell fast, explicit deadline, foreclosure, already moving\\n\\nConfidence: certainty given only the SMS text. Reserve 90+ for unambiguous messages. Return only the JSON object.\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"{{1.data.body}}\"\n    }\n  ]\n}",
+        "parseResponse": true,
+        "timeout": 20,
+        "followRedirect": true,
+        "useMtls": false,
+        "serializeUrl": false,
+        "shareCookies": false
+      },
+      "metadata": {
+        "designer": { "x": 300, "y": 0 }
+      }
+    },
+    {
+      "id": 3,
+      "module": "json:ParseJSON",
+      "version": 1,
+      "parameters": { "type": "" },
+      "mapper": {
+        "json": "{{2.body.content[].text}}"
+      },
+      "metadata": {
+        "designer": { "x": 600, "y": 0 }
+      }
+    },
+    {
+      "id": 4,
+      "module": "http:ActionSendData",
+      "version": 3,
+      "parameters": { "handleErrors": true },
+      "mapper": {
+        "url": "https://api.close.com/api/v1/lead/{{1.data.lead_id}}/",
+        "method": "put",
+        "headers": [
+          {
+            "name": "Authorization",
+            "value": "Basic {{base64(REPLACE_CLOSEIO_API_KEY:)}}"
+          },
+          { "name": "Content-Type", "value": "application/json" },
+          { "name": "Accept",       "value": "application/json" }
+        ],
+        "bodyType": "raw",
+        "contentType": "application/json",
+        "body": "{\n  \"custom.lcf_REPLACE_REPLY_CLASSIFICATION\": \"{{3.classification}}\",\n  \"custom.lcf_REPLACE_CLASSIFICATION_CONFIDENCE\": {{3.confidence}},\n  \"custom.lcf_REPLACE_LAST_PROCESSED_ACTIVITY\": \"{{1.data.id}}\",\n  \"status_label\": \"{{if(3.classification = 'not_interested', 'Not Interested', if(3.classification = 'dnc', 'DNC', if(3.classification = 'maybe_later', 'Nurture — Maybe Later', 'AI Qualifying')))}}\"\n}",
+        "parseResponse": true,
+        "timeout": 15,
+        "followRedirect": true
+      },
+      "metadata": {
+        "designer": { "x": 900, "y": 0 }
+      }
+    }
+  ],
+  "metadata": {
+    "instant": true,
+    "version": 1,
+    "scenario": {
+      "roundtrips": 1,
+      "maxErrors": 3,
+      "autoCommit": true,
+      "autoCommitTriggerLast": true,
+      "sequential": false,
+      "confidential": false,
+      "dataloss": false,
+      "dlq": false,
+      "freshVariables": false
+    },
+    "designer": {
+      "orphans": []
+    },
+    "zone": "us1.make.com"
+  }
+}

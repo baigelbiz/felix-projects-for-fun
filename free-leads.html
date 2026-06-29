@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sell Your House Fast — Get a Cash Offer</title>
+<style>
+  :root{
+    --bg:#0f1115;
+    --panel:#171a21;
+    --panel-2:#1d212a;
+    --line:#2a2f3a;
+    --text:#eef1f6;
+    --muted:#9aa3b2;
+    --accent:#16c784;
+    --accent-2:#13a06a;
+    --ring:rgba(22,199,132,.35);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:radial-gradient(1200px 600px at 50% -10%,#1a2330 0%,var(--bg) 55%) no-repeat,var(--bg);
+    color:var(--text);
+    line-height:1.55;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1040px;margin:0 auto;padding:0 20px}
+
+  /* Top bar */
+  .topbar{padding:22px 0;display:flex;align-items:center;justify-content:space-between}
+  .brand{font-weight:800;letter-spacing:.3px;font-size:18px}
+  .brand span{color:var(--accent)}
+  .badge{font-size:12px;color:var(--muted);border:1px solid var(--line);padding:6px 12px;border-radius:999px}
+
+  /* Hero */
+  .hero{display:grid;grid-template-columns:1.1fr .9fr;gap:42px;align-items:start;padding:30px 0 60px}
+  .eyebrow{display:inline-block;color:var(--accent);font-weight:700;font-size:13px;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:16px}
+  h1{font-size:46px;line-height:1.08;margin:0 0 18px;font-weight:800;letter-spacing:-.5px}
+  h1 em{color:var(--accent);font-style:normal}
+  .sub{font-size:18px;color:var(--muted);margin:0 0 26px;max-width:520px}
+  .points{list-style:none;padding:0;margin:0 0 28px}
+  .points li{display:flex;gap:12px;align-items:flex-start;margin:0 0 14px;font-size:16px}
+  .points li svg{flex:0 0 auto;margin-top:3px}
+  .proof{display:flex;gap:26px;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:22px}
+  .proof .stat{min-width:120px}
+  .proof .num{font-size:26px;font-weight:800}
+  .proof .lbl{font-size:13px;color:var(--muted)}
+
+  /* Form card */
+  .card{background:linear-gradient(180deg,var(--panel) 0%,var(--panel-2) 100%);border:1px solid var(--line);border-radius:16px;padding:26px;box-shadow:0 20px 60px rgba(0,0,0,.45)}
+  .card h2{margin:0 0 6px;font-size:21px}
+  .card .lead{margin:0 0 20px;color:var(--muted);font-size:14px}
+  .field{margin-bottom:14px}
+  label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px;font-weight:600}
+  input,select,textarea{
+    width:100%;padding:12px 13px;border-radius:10px;border:1px solid var(--line);
+    background:#0f1218;color:var(--text);font-size:15px;outline:none;transition:border .15s,box-shadow .15s;font-family:inherit;
+  }
+  textarea{resize:vertical;min-height:72px}
+  input:focus,select:focus,textarea:focus{border-color:var(--accent);box-shadow:0 0 0 4px var(--ring)}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .consent{display:flex;gap:10px;align-items:flex-start;margin:16px 0 6px}
+  .consent input{width:18px;height:18px;margin-top:3px;accent-color:var(--accent)}
+  .consent label{font-size:11.5px;color:var(--muted);line-height:1.5;margin:0;font-weight:400}
+  .btn{
+    width:100%;margin-top:10px;padding:15px;border:0;border-radius:10px;cursor:pointer;
+    background:linear-gradient(180deg,var(--accent) 0%,var(--accent-2) 100%);
+    color:#04130c;font-weight:800;font-size:16px;letter-spacing:.3px;
+    transition:transform .05s,filter .15s;
+  }
+  .btn:hover{filter:brightness(1.05)}
+  .btn:active{transform:translateY(1px)}
+  .micro{text-align:center;font-size:12px;color:var(--muted);margin-top:12px}
+
+  /* Disclaimer + footer */
+  .disclaimer{border-top:1px solid var(--line);padding:34px 0;color:var(--muted);font-size:12.5px;max-width:880px}
+  .disclaimer h3{color:var(--text);font-size:14px;margin:0 0 8px}
+  footer{border-top:1px solid var(--line);padding:26px 0 50px;color:var(--muted);font-size:12.5px}
+  footer a{color:var(--muted);text-decoration:underline;text-underline-offset:2px}
+  footer .links{margin-bottom:8px}
+  footer .links a{margin-right:16px}
+
+  /* Success state */
+  .success{display:none;text-align:center;padding:14px 0}
+  .success .check{width:54px;height:54px;border-radius:50%;background:rgba(22,199,132,.15);display:flex;align-items:center;justify-content:center;margin:0 auto 14px}
+  .success h2{margin:0 0 6px}
+  .success p{color:var(--muted);margin:0}
+
+  /* Transformation section */
+  .transform{padding:64px 0 30px;border-top:1px solid var(--line)}
+  .transform .head{text-align:center;max-width:640px;margin:0 auto 48px}
+  .transform .head .eyebrow{margin-bottom:14px}
+  .transform h2{font-size:36px;line-height:1.12;margin:0 0 14px;font-weight:800;letter-spacing:-.4px}
+  .transform h2 em{color:var(--accent);font-style:normal}
+  .transform .head p{color:var(--muted);font-size:17px;margin:0}
+
+  .flip{display:flex;flex-direction:column;gap:22px;max-width:760px;margin:0 auto}
+  .flip-row{
+    display:grid;grid-template-columns:1fr 56px 1fr;align-items:stretch;gap:0;
+    opacity:0;transform:translateY(26px);transition:opacity .6s ease,transform .6s ease;
+  }
+  .flip-row.in{opacity:1;transform:none}
+  .pane{padding:22px 22px;border:1px solid var(--line);display:flex;flex-direction:column;justify-content:center}
+  .pane .tag{font-size:11px;letter-spacing:1.2px;text-transform:uppercase;font-weight:700;margin-bottom:8px}
+  .pane .big{font-size:17px;font-weight:700;line-height:1.3;margin:0 0 4px}
+  .pane .small{font-size:13.5px;color:var(--muted);margin:0}
+  .before{background:#16110f;border-color:#3a241f;border-radius:14px 0 0 14px}
+  .before .tag{color:#ff8b6b}
+  .before .big{color:#f3d9d1}
+  .after{background:rgba(22,199,132,.08);border-color:#1f4d3a;border-radius:0 14px 14px 0}
+  .after .tag{color:var(--accent)}
+  .arrow{display:flex;align-items:center;justify-content:center;background:var(--panel);border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+  .arrow svg{display:block}
+
+  .transform .cta-band{text-align:center;margin-top:46px}
+  .transform .cta-band a{
+    display:inline-block;padding:15px 30px;border-radius:10px;text-decoration:none;
+    background:linear-gradient(180deg,var(--accent) 0%,var(--accent-2) 100%);
+    color:#04130c;font-weight:800;font-size:16px;
+  }
+  .transform .cta-band p{color:var(--muted);font-size:13px;margin:12px 0 0}
+
+  @media (max-width:860px){
+    .hero{grid-template-columns:1fr;gap:30px;padding-bottom:40px}
+    h1{font-size:34px}
+    .row{grid-template-columns:1fr}
+    .transform h2{font-size:28px}
+    .flip-row{grid-template-columns:1fr;gap:0}
+    .before{border-radius:14px 14px 0 0}
+    .after{border-radius:0 0 14px 14px}
+    .arrow{transform:rotate(90deg);border:1px solid var(--line);border-radius:0;height:40px}
+  }
+</style>
+</head>
+<body>
+
+  <div class="wrap">
+    <div class="topbar">
+      <div class="brand">Shefa <span>Homes</span></div>
+      <div class="badge">We Buy Houses — Any Condition</div>
+    </div>
+  </div>
+
+  <div class="wrap">
+    <section class="hero">
+      <!-- Left: pitch -->
+      <div>
+        <span class="eyebrow">Free, No-Obligation Cash Offer</span>
+        <h1>Sell your house <em>fast</em> — for cash, as-is.</h1>
+        <p class="sub">No repairs. No agents. No fees. Tell us about your property and we'll send you a fair cash offer — close on the date that works for you.</p>
+
+        <ul class="points">
+          <li>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="11" fill="#16c784" opacity=".18"/><path d="M7 12.5l3.2 3.2L17 9" stroke="#16c784" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span>Sell as-is — we cover repairs, cleanouts, and closing costs</span>
+          </li>
+          <li>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="11" fill="#16c784" opacity=".18"/><path d="M7 12.5l3.2 3.2L17 9" stroke="#16c784" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span>No commissions, no agent fees, no hidden charges</span>
+          </li>
+          <li>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="11" fill="#16c784" opacity=".18"/><path d="M7 12.5l3.2 3.2L17 9" stroke="#16c784" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span>Close in as little as 7 days — or on your timeline</span>
+          </li>
+        </ul>
+
+        <div class="proof">
+          <div class="stat"><div class="num">500+</div><div class="lbl">Homes purchased</div></div>
+          <div class="stat"><div class="num">24 hrs</div><div class="lbl">Offer turnaround</div></div>
+          <div class="stat"><div class="num">$0</div><div class="lbl">Fees or commissions</div></div>
+        </div>
+      </div>
+
+      <!-- Right: form -->
+      <div class="card">
+        <div id="formView">
+          <h2>Get your free cash offer</h2>
+          <p class="lead">Takes 60 seconds. No obligation, no pressure.</p>
+
+          <form id="leadForm" novalidate>
+            <div class="field">
+              <label for="address">Property address</label>
+              <input id="address" name="address" type="text" autocomplete="street-address" placeholder="Street, City, State, ZIP" required>
+            </div>
+
+            <div class="row">
+              <div class="field">
+                <label for="name">Full name</label>
+                <input id="name" name="name" type="text" autocomplete="name" required>
+              </div>
+              <div class="field">
+                <label for="phone">Phone number</label>
+                <input id="phone" name="phone" type="tel" autocomplete="tel" required>
+              </div>
+            </div>
+
+            <div class="field">
+              <label for="email">Email address</label>
+              <input id="email" name="email" type="email" autocomplete="email" required>
+            </div>
+
+            <div class="row">
+              <div class="field">
+                <label for="condition">Property condition</label>
+                <select id="condition" name="condition" required>
+                  <option value="" selected disabled>Select…</option>
+                  <option>Move-in ready</option>
+                  <option>Needs minor work</option>
+                  <option>Needs major repairs</option>
+                  <option>Distressed / teardown</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="timeline">How soon to sell?</label>
+                <select id="timeline" name="timeline" required>
+                  <option value="" selected disabled>Select…</option>
+                  <option>ASAP</option>
+                  <option>1–3 months</option>
+                  <option>3–6 months</option>
+                  <option>Just exploring</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="field">
+              <label for="reason">Reason for selling <span style="font-weight:400;color:#6c7585">(optional)</span></label>
+              <select id="reason" name="reason">
+                <option value="" selected disabled>Select…</option>
+                <option>Relocating / moving</option>
+                <option>Inherited property</option>
+                <option>Tired landlord</option>
+                <option>Behind on payments / foreclosure</option>
+                <option>Divorce</option>
+                <option>Downsizing</option>
+                <option>Other</option>
+              </select>
+            </div>
+
+            <div class="field">
+              <label for="notes">Anything else we should know? <span style="font-weight:400;color:#6c7585">(optional)</span></label>
+              <textarea id="notes" name="notes" placeholder="Mortgage balance, liens, tenants, asking price in mind, etc."></textarea>
+            </div>
+
+            <div class="consent">
+              <input id="sms" type="checkbox" required>
+              <label for="sms">By checking this box, I agree to be contacted by Shefa Homes by phone, email, and text message about my property at the number and email provided, including by automated means. Consent is not a condition of any purchase. Message frequency varies. Message &amp; data rates may apply. Reply HELP for help or STOP to cancel.</label>
+            </div>
+
+            <button class="btn" type="submit">Get My Cash Offer →</button>
+            <p class="micro">100% free &amp; confidential. No obligation to accept.</p>
+          </form>
+        </div>
+
+        <div class="success" id="successView">
+          <div class="check">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none"><path d="M5 12.5l4 4L19 7" stroke="#16c784" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </div>
+          <h2>Got it — thank you!</h2>
+          <p>We're reviewing your property now and will reach out within 24 hours with your cash offer.</p>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div class="wrap">
+    <section class="transform">
+      <div class="head">
+        <span class="eyebrow">From Stuck → Sold</span>
+        <h2>The situation that's keeping you up at night is <em>exactly</em> what we solve.</h2>
+        <p>The houses other buyers run from are the ones we want. Here's how a bad spot turns into a clean win.</p>
+      </div>
+
+      <div class="flip">
+
+        <div class="flip-row">
+          <div class="pane before">
+            <div class="tag">Before</div>
+            <p class="big">Facing foreclosure, clock ticking</p>
+            <p class="small">Behind on payments and dreading the next letter from the bank.</p>
+          </div>
+          <div class="arrow">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M4 12h14M13 6l6 6-6 6" stroke="#16c784" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </div>
+          <div class="pane after">
+            <div class="tag">After</div>
+            <p class="big">Sold before the auction — cash in hand</p>
+            <p class="small">Walked away with money and credit intact. No foreclosure on record.</p>
+          </div>
+        </div>
+
+        <div class="flip-row">
+          <div class="pane before">
+            <div class="tag">Before</div>
+            <p class="big">Inherited a house you never wanted</p>
+            <p class="small">Out of state, full of stuff, and costing you taxes every month.</p>
+          </div>
+          <div class="arrow">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M4 12h14M13 6l6 6-6 6" stroke="#16c784" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </div>
+          <div class="pane after">
+            <div class="tag">After</div>
+            <p class="big">Sold in 9 days — we cleared it out</p>
+            <p class="small">Left whatever you wanted behind. We handled the cleanout, you cashed the check.</p>
+          </div>
+        </div>
+
+        <div class="flip-row">
+          <div class="pane before">
+            <div class="tag">Before</div>
+            <p class="big">$60k in repairs you can't afford</p>
+            <p class="small">Roof, foundation, mold — no agent will list it like this.</p>
+          </div>
+          <div class="arrow">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M4 12h14M13 6l6 6-6 6" stroke="#16c784" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </div>
+          <div class="pane after">
+            <div class="tag">After</div>
+            <p class="big">Sold as-is — $0 spent on repairs</p>
+            <p class="small">We bought it exactly as it sat. The repairs became our problem, not yours.</p>
+          </div>
+        </div>
+
+        <div class="flip-row">
+          <div class="pane before">
+            <div class="tag">Before</div>
+            <p class="big">Tired landlord, nightmare tenants</p>
+            <p class="small">Tenants won't leave and you're done being a landlord.</p>
+          </div>
+          <div class="arrow">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M4 12h14M13 6l6 6-6 6" stroke="#16c784" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </div>
+          <div class="pane after">
+            <div class="tag">After</div>
+            <p class="big">Sold with tenants in place</p>
+            <p class="small">No eviction, no vacancy. We closed around them — you were finally free.</p>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="cta-band">
+        <a href="#leadForm">See What We'd Pay for Your House →</a>
+        <p>Free, no-obligation offer in 24 hours.</p>
+      </div>
+    </section>
+  </div>
+
+  <div class="wrap">
+    <div class="disclaimer">
+      <h3>Disclaimer</h3>
+      <p>Submitting this form does not create any obligation to sell, and any offer presented is non-binding until a written purchase agreement is signed by both parties. Offer amounts depend on property condition, location, market value, and other factors. Shefa Homes is a real estate investment company, not a licensed brokerage, lender, or financial advisor — we may purchase your property directly or assign the contract to a third-party buyer. Please consult your own legal, tax, and financial professionals before making any decision regarding the sale of your property.</p>
+    </div>
+  </div>
+
+  <div class="wrap">
+    <footer>
+      <div class="links">
+        <a href="#">Privacy Policy</a>
+        <a href="#">Terms &amp; Conditions</a>
+      </div>
+      <div>© Shefa Homes, 2026. All rights reserved.</div>
+      <div style="margin-top:8px">This site is not a part of the Facebook™ website or Meta Platforms, Inc. This site is not endorsed by Facebook™ in any way. FACEBOOK™ is a trademark of Meta Platforms, Inc.</div>
+    </footer>
+  </div>
+
+<script>
+  document.getElementById('leadForm').addEventListener('submit', async function(e){
+    e.preventDefault();
+    if(!this.checkValidity()){ this.reportValidity(); return; }
+
+    var btn = this.querySelector('.btn');
+    var original = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Sending…';
+
+    var data = Object.fromEntries(new FormData(this).entries());
+
+    try{
+      var resp = await fetch('/api/lead', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(data)
+      });
+      if(!resp.ok) throw new Error('bad response');
+      document.getElementById('formView').style.display = 'none';
+      document.getElementById('successView').style.display = 'block';
+    }catch(err){
+      btn.disabled = false;
+      btn.textContent = original;
+      alert("Sorry — something went wrong sending your info. Please call us instead, or try again.");
+    }
+  });
+
+  // Reveal before/after rows as they scroll into view
+  var io = new IntersectionObserver(function(entries){
+    entries.forEach(function(en){
+      if(en.isIntersecting){ en.target.classList.add('in'); io.unobserve(en.target); }
+    });
+  }, {threshold:0.25});
+  document.querySelectorAll('.flip-row').forEach(function(el, i){
+    el.style.transitionDelay = (i * 90) + 'ms';
+    io.observe(el);
+  });
+</script>
+</body>
+</html>
