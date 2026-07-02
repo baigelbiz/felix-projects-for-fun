@@ -68,6 +68,7 @@ async function transcribeVoiceNote(msg) {
     const transcript = await openai.audio.transcriptions.create({
       file: fs.createReadStream(tmpFile),
       model: "whisper-1",
+      language: "he",
     });
     return transcript.text;
   } finally {
