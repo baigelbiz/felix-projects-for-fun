@@ -727,7 +727,7 @@ def run(prompt: str, history: list, image_path: str = None) -> tuple[str, list]:
 
     for _ in range(10):  # max tool call rounds
         response = client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-4.1",
             messages=messages,
             tools=TOOLS,
             tool_choice="auto",
