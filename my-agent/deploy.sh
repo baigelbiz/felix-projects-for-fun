@@ -3,7 +3,7 @@ set -euo pipefail
 
 SERVER="${SERVER:-root@138.199.159.146}"
 REMOTE_APP="${REMOTE_APP:-/root/my-agent}"
-REMOTE_REPO="${REMOTE_REPO:-/root/repo-update}"
+REMOTE_REPO="${REMOTE_REPO:-/root/repo-update/my-agent}"
 
 git diff --check
 git push origin main
