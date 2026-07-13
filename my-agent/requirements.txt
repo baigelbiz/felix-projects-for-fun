@@ -1,1 +1,5 @@
 claude-agent-sdk>=0.2.97
+openai>=1.0.0
+requests
+google-auth
+google-api-python-client
