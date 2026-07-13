@@ -7,10 +7,11 @@ persisting message history between calls (.whatsapp_session file).
 
 import json
 import os
+import re
 import sys
 import tempfile
 import requests as http_requests
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from pathlib import Path
 
@@ -85,6 +86,11 @@ SYSTEM_PROMPT = (
     "as a guest to invite: add it as an attendee automatically, without asking. If the event was already "
     "created, recreate it with the attendee included and delete the old one, then confirm the invite was "
     "sent and include the new event link. "
+    "For reminders or short tasks, especially requests like 'remind me in five minutes', 'put a reminder "
+    "tomorrow at 9', or Hebrew equivalents, use calendar_create_reminder. Do not ask for date/time when "
+    "the user gave a relative time; the tool resolves it against the current Israel time. If the task "
+    "text is clear, create the reminder immediately and confirm briefly. Do not ask the user to approve "
+    "your transcription or title unless the task itself is genuinely unclear. "
     "Your default timezone is Israel time (Asia/Jerusalem). All dates/times the user gives you, "
     "and all times you state back, are in Israel time unless the user specifies otherwise. "
     "IMPORTANT: whenever the user says the phrase 'timezone San Diego' (or otherwise explicitly ties a "
@@ -245,6 +251,44 @@ TOOLS = [
                     "account": {"type": "string", "enum": ["business", "personal"], "description": "Which calendar to create the event on. Defaults to business.", "default": "business"},
                 },
                 "required": ["summary", "start", "end"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "calendar_create_reminder",
+            "description": (
+                "Create a short reminder/task on Google Calendar. Use this for reminder requests, including "
+                "relative times like 'in five minutes', 'in 2 hours', 'tomorrow at 9', or Hebrew equivalents. "
+                "The tool resolves relative times using the current server time, so do not ask the user what "
+                "time it is when they gave a relative time."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "summary": {
+                        "type": "string",
+                        "description": "Reminder title/task, preserving English names and places exactly as spoken.",
+                    },
+                    "when": {
+                        "type": "string",
+                        "description": "When to remind, either ISO datetime or natural text like 'in five minutes', 'tomorrow at 9', 'בעוד 5 דקות'.",
+                    },
+                    "duration_minutes": {"type": "integer", "default": 15},
+                    "timezone": {
+                        "type": "string",
+                        "description": "IANA timezone for the reminder. Defaults to Asia/Jerusalem.",
+                        "default": "Asia/Jerusalem",
+                    },
+                    "account": {
+                        "type": "string",
+                        "enum": ["business", "personal"],
+                        "description": "Which calendar to create the reminder on. Defaults to business.",
+                        "default": "business",
+                    },
+                },
+                "required": ["summary", "when"],
             },
         },
     },
@@ -540,6 +584,93 @@ def _with_tz(dt_str: str) -> str:
     return dt.isoformat()
 
 
+_NUMBER_WORDS = {
+    "one": 1,
+    "two": 2,
+    "three": 3,
+    "four": 4,
+    "five": 5,
+    "six": 6,
+    "seven": 7,
+    "eight": 8,
+    "nine": 9,
+    "ten": 10,
+    "eleven": 11,
+    "twelve": 12,
+    "אחת": 1,
+    "אחד": 1,
+    "שתיים": 2,
+    "שתי": 2,
+    "שניים": 2,
+    "שלוש": 3,
+    "ארבע": 4,
+    "חמש": 5,
+    "שש": 6,
+    "שבע": 7,
+    "שמונה": 8,
+    "תשע": 9,
+    "עשר": 10,
+}
+
+
+def _natural_number(text: str) -> int:
+    normalized = text.strip().lower()
+    if normalized.isdigit():
+        return int(normalized)
+    return _NUMBER_WORDS[normalized]
+
+
+def _parse_reminder_when(when: str, tz_name: str = "Asia/Jerusalem") -> datetime:
+    tz = ZoneInfo(tz_name)
+    now = datetime.now(tz)
+    raw = when.strip()
+    lowered = raw.lower()
+
+    try:
+        parsed = datetime.fromisoformat(raw)
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=tz)
+        return parsed.astimezone(tz)
+    except ValueError:
+        pass
+
+    number_pattern = r"(\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|אחת|אחד|שתיים|שתי|שניים|שלוש|ארבע|חמש|שש|שבע|שמונה|תשע|עשר)"
+    relative = re.search(
+        rf"(?:in|בעוד)\s+{number_pattern}\s*(minute|minutes|min|hour|hours|day|days|דקה|דקות|שעה|שעות|יום|ימים)",
+        lowered,
+    )
+    if relative:
+        amount = _natural_number(relative.group(1))
+        unit = relative.group(2)
+        if unit in {"minute", "minutes", "min", "דקה", "דקות"}:
+            return now + timedelta(minutes=amount)
+        if unit in {"hour", "hours", "שעה", "שעות"}:
+            return now + timedelta(hours=amount)
+        return now + timedelta(days=amount)
+
+    date_base = now
+    if "tomorrow" in lowered or "מחר" in lowered:
+        date_base = now + timedelta(days=1)
+
+    time_match = re.search(r"(?:at|ב|בשעה)?\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?", lowered)
+    if time_match:
+        hour = int(time_match.group(1))
+        minute = int(time_match.group(2) or 0)
+        meridiem = time_match.group(3)
+        if meridiem == "pm" and hour != 12:
+            hour += 12
+        elif meridiem == "am" and hour == 12:
+            hour = 0
+        candidate = date_base.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        if "tomorrow" not in lowered and "מחר" not in lowered and candidate <= now:
+            candidate += timedelta(days=1)
+        return candidate
+
+    raise ValueError(
+        f"Could not understand reminder time '{when}'. Use a relative time like 'in 5 minutes' or an ISO datetime."
+    )
+
+
 def calendar_list_events(max_results: int = 10, time_min: str = None, time_max: str = None, account: str = "business") -> str:
     svc = build("calendar", "v3", credentials=_gcal_creds(account))
     now = datetime.now(timezone.utc).isoformat()
@@ -596,6 +727,23 @@ def calendar_create_event(summary: str, start: str, end: str, timezone: str = "A
     return (
         f"Event created on {account} calendar: {event.get('summary')} on {event['start'].get('dateTime', event['start'].get('date'))} "
         f"({timezone}). Equivalent in Israel time: {israel_equiv}.{invite_note} Link: {event.get('htmlLink','')}"
+    )
+
+
+def calendar_create_reminder(summary: str, when: str, duration_minutes: int = 15, timezone: str = "Asia/Jerusalem", account: str = "business") -> str:
+    start_dt = _parse_reminder_when(when, timezone)
+    duration = max(5, min(int(duration_minutes or 15), 240))
+    end_dt = start_dt + timedelta(minutes=duration)
+    clean_summary = summary.strip()
+    if not clean_summary.lower().startswith(("reminder:", "תזכורת:")):
+        clean_summary = f"Reminder: {clean_summary}"
+
+    return calendar_create_event(
+        summary=clean_summary,
+        start=start_dt.strftime("%Y-%m-%dT%H:%M:%S"),
+        end=end_dt.strftime("%Y-%m-%dT%H:%M:%S"),
+        timezone=timezone,
+        account=account,
     )
 
 
@@ -767,6 +915,7 @@ TOOL_FN = {
     "log_receipt": log_receipt,
     "calendar_list_events": calendar_list_events,
     "calendar_create_event": calendar_create_event,
+    "calendar_create_reminder": calendar_create_reminder,
     "calendar_delete_event": calendar_delete_event,
 }
 
