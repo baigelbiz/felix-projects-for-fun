@@ -23,7 +23,7 @@ const SCRIPT = path.join(__dirname, "agent_reply.py");
 // Felix's primary number — only this contact can use the bot. WhatsApp may
 // identify the same contact as either a phone-number JID (@c.us) or an
 // anonymized @lid, so we accept both.
-const ALLOWED_IDS = ["18582629123@c.us", "225864126062745@lid"];
+const ALLOWED_IDS = ["18582629123@c.us", "225864126062745@lid", "38517333864587@lid"];
 const BOT_MARK = "🤖 "; // prefix on every bot reply, used to ignore our own messages
 const sentByBot = new Set(); // ids of messages the bot itself sent
 let agentBusy = false;

@@ -727,17 +727,23 @@ def run(prompt: str, history: list, image_path: str = None) -> tuple[str, list]:
 
     for _ in range(10):  # max tool call rounds
         response = client.chat.completions.create(
-            model="gpt-4.1",
+            model="o4-mini",
             messages=messages,
             tools=TOOLS,
             tool_choice="auto",
+            max_tokens=4096,
         )
         msg = response.choices[0].message
 
         if msg.tool_calls:
             messages.append(msg)
             for tc in msg.tool_calls:
-                args = json.loads(tc.function.arguments)
+                try:
+                    args = json.loads(tc.function.arguments)
+                except json.JSONDecodeError:
+                    result = "Error: model returned malformed tool arguments, please try again"
+                    messages.append({"role": "tool", "tool_call_id": tc.id, "content": result})
+                    continue
                 try:
                     result = TOOL_FN[tc.function.name](**args)
                 except Exception as e:
