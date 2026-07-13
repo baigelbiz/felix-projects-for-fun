@@ -69,6 +69,11 @@ async function transcribeVoiceNote(msg) {
       file: fs.createReadStream(tmpFile),
       model: "whisper-1",
       language: "he",
+      // Bias Whisper to keep embedded English names/terms in English letters
+      // instead of forcing them into Hebrew spelling.
+      prompt:
+        "שיחה עסקית בעברית על נדל\"ן. שמות של אנשים, מקומות וחברות באנגלית נשארים באנגלית, " +
+        "למשל: Kenneth, North Carolina, San Diego, Close CRM, Shefa Homes.",
     });
     return transcript.text;
   } finally {
