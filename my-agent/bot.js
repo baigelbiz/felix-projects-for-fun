@@ -92,11 +92,17 @@ client.on("message_create", async (msg) => {
   if (sentByBot.has(msg.id?._serialized) || (msg.body || "").startsWith(BOT_MARK)) return;
   const isVoice = msg.type === "ptt" || msg.type === "audio";
   const isImage = msg.type === "image";
-  if (!isVoice && !isImage && (!msg.body || msg.type !== "chat")) return; // text, voice, or image only
+  const isLocation = msg.type === "location";
+  if (!isVoice && !isImage && !isLocation && (!msg.body || msg.type !== "chat")) return; // text, voice, image, or location only
 
   let prompt;
   let imagePath;
-  if (isVoice) {
+  if (isLocation) {
+    const loc = msg.location || {};
+    const label = loc.name || loc.description || loc.address || "";
+    prompt = `[Location shared]: latitude=${loc.latitude}, longitude=${loc.longitude}` + (label ? ` (${label})` : "");
+    console.log(`-> received location: ${loc.latitude},${loc.longitude}${label ? ` (${label})` : ""}`);
+  } else if (isVoice) {
     console.log("-> transcribing voice note...");
     try {
       const transcript = await transcribeVoiceNote(msg);
