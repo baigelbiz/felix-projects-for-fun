@@ -28,6 +28,11 @@ const BOT_MARK = "🤖 "; // prefix on every bot reply, used to ignore our own m
 const sentByBot = new Set(); // ids of messages the bot itself sent
 let agentBusy = false;
 const agentQueue = [];
+const STATE_FILE = path.join(__dirname, ".bot_state.json");
+let botState = {};
+try {
+  botState = JSON.parse(fs.readFileSync(STATE_FILE, "utf8"));
+} catch (_) {}
 
 // On Linux servers (run as root), Puppeteer needs the system Chromium with
 // --no-sandbox. On Mac this var is unset and whatsapp-web.js uses its bundled
@@ -56,8 +61,64 @@ client.on("qr", async (qr) => {
   console.log("QR code written to qr.png — scan from WhatsApp > Settings > Linked Devices");
 });
 
-client.on("ready", () => {
+async function sendProactiveMessage(text) {
+  const sent = await client.sendMessage(ALLOWED_IDS[0], BOT_MARK + text.slice(0, 4000));
+  sentByBot.add(sent.id?._serialized);
+  return sent;
+}
+
+function saveBotState() {
+  fs.writeFileSync(STATE_FILE, JSON.stringify(botState, null, 2));
+}
+
+function runAgent(prompt) {
+  return new Promise((resolve, reject) => {
+    execFile(PYTHON, [SCRIPT, prompt], { timeout: 300_000, maxBuffer: 10 * 1024 * 1024, cwd: __dirname }, (err, stdout, stderr) => {
+      if (err) reject(new Error((stderr || err.message).trim()));
+      else resolve(stdout.trim());
+    });
+  });
+}
+
+async function sendMorningBriefing() {
+  try {
+    const briefing = await runAgent(
+      "[Scheduled morning briefing] Prepare my concise morning briefing for today. " +
+      "Read both business and personal calendars, search Close CRM for new leads or follow-ups due, " +
+      "and include only useful action items. Use short WhatsApp-friendly bullets."
+    );
+    await sendProactiveMessage("Good morning.\n\n" + briefing);
+    console.log("-> morning briefing sent");
+  } catch (e) {
+    console.error("morning briefing failed:", e.message);
+    await sendProactiveMessage(`⚠️ Morning briefing failed: ${e.message.slice(0, 300)}`).catch(() => {});
+  }
+}
+
+function scheduleMorningBriefing() {
+  const check = () => {
+    const now = new Date();
+    const israel = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Jerusalem", year: "numeric", month: "2-digit", day: "2-digit",
+      hour: "2-digit", minute: "2-digit", hour12: false,
+    }).formatToParts(now).reduce((out, part) => ((out[part.type] = part.value), out), {});
+    const date = `${israel.year}-${israel.month}-${israel.day}`;
+    if (israel.hour === "07" && Number(israel.minute) < 2 && botState.briefingDate !== date) {
+      botState.briefingDate = date;
+      saveBotState();
+      sendMorningBriefing();
+    }
+  };
+  check();
+  setInterval(check, 30_000);
+}
+
+client.on("ready", async () => {
   console.log("READY: WhatsApp bridge is live. Message yourself starting with '@a '.");
+  if (process.env.BOT_SEND_STARTUP_ALERT !== "false") {
+    await sendProactiveMessage(`✅ WhatsApp assistant is online (${new Date().toLocaleString("en-IL", { timeZone: "Asia/Jerusalem" })}).`).catch((e) => console.error("startup alert failed:", e.message));
+  }
+  scheduleMorningBriefing();
 });
 
 async function transcribeVoiceNote(msg) {
@@ -152,7 +213,10 @@ function processQueue() {
     { timeout: 300_000, maxBuffer: 10 * 1024 * 1024, cwd: __dirname },
     async (err, stdout, stderr) => {
       if (imagePath) fs.unlink(imagePath, () => {});
-      if (err) console.error("agent error (full):\n", stderr || err.message);
+      if (err) {
+        console.error("agent error (full):\n", stderr || err.message);
+        await sendProactiveMessage(`⚠️ Agent/tool failure: ${(stderr || err.message).slice(0, 500)}`).catch(() => {});
+      }
 
       const raw = err
         ? `⚠️ agent error: ${(stderr || err.message).slice(0, 1500)}`
@@ -183,5 +247,24 @@ function processQueue() {
     }
   );
 }
+
+client.on("auth_failure", (message) => {
+  console.error("WhatsApp auth failure:", message);
+  sendProactiveMessage(`🚨 WhatsApp authentication failed: ${String(message).slice(0, 300)}`).catch(() => {});
+});
+
+client.on("disconnected", (reason) => {
+  console.error("WhatsApp disconnected:", reason);
+});
+
+process.on("uncaughtException", (error) => {
+  console.error("uncaught exception:", error);
+  sendProactiveMessage(`🚨 Bot error: ${error.message.slice(0, 300)}`).catch(() => {});
+});
+
+process.on("unhandledRejection", (error) => {
+  console.error("unhandled rejection:", error);
+  sendProactiveMessage(`🚨 Bot promise failure: ${String(error).slice(0, 300)}`).catch(() => {});
+});
 
 client.initialize();

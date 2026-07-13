@@ -7,3 +7,6 @@ node_modules/
 .wwebjs_cache/
 qr.png
 .whatsapp_session
+.assistant_memory.json
+.bot_state.json
+backup-*

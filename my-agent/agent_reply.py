@@ -23,6 +23,7 @@ from google.genai import types as genai_types
 from openai import OpenAI  # still used for generate_image (gpt-image-1); the chat/tool-calling model is Gemini
 
 SESSION_FILE = Path(__file__).parent / ".whatsapp_session"
+MEMORY_FILE = Path(__file__).parent / ".assistant_memory.json"
 CREDS_DIR = Path(__file__).parent / "google_creds"
 RECEIPTS_CONFIG_FILE = Path(__file__).parent / ".receipts_config.json"
 _current_image_path = None  # set by run() before each query, read by log_receipt tool
@@ -60,6 +61,12 @@ SYSTEM_PROMPT = (
     "channel (email vs SMS vs listing) is unclear, ask before drafting. "
     "You can look up leads/contacts in Close CRM (Shefa Homes) by name, email, phone, or company — "
     "use this whenever the user mentions a person/deal that might already be a lead. "
+    "You can also write to Close CRM. For a clear request to add a lead, call close_create_lead; "
+    "for a note about an existing lead, search first if needed and then call close_add_note; "
+    "for a follow-up task, call close_create_task. These write actions are authorized when the user "
+    "explicitly asks for them; do not ask for a second confirmation. "
+    "You have long-term memory. When the user says remember/save/keep in mind, call remember_memory. "
+    "When a person, deal, property, or preference may have relevant history, call recall_memory before replying. "
     "You can search the web for current info: market comps, news, research on a person/company/property, "
     "or anything else that benefits from up-to-date results. "
     "When the user sends a photo of a receipt, read the vendor, amount, date, and a sensible category "
@@ -76,7 +83,7 @@ SYSTEM_PROMPT = (
     "They are completely independent — an event created on one never appears on the other. Default to the "
     "business calendar unless the user says 'personal' or it's clearly a personal matter. If genuinely "
     "ambiguous, ask which calendar before creating/deleting. "
-    "You can read the calendar, create events, and delete events. Before deleting, confirm which "
+    "You can read the calendar, create, update, and delete events. Before deleting, confirm which "
     "event you found (use calendar_list_events to get its ID) unless the user is unambiguous. "
     "After creating an event, ALWAYS include the event link from the tool result in your reply, as a raw "
     "URL on its own line, so the user can tap it and verify the event — never omit the link. "
@@ -310,6 +317,27 @@ TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "calendar_update_event",
+            "description": "Update an existing Google Calendar event. Use calendar_list_events first when the user identifies it by title rather than ID.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "event_id": {"type": "string"},
+                    "summary": {"type": "string"},
+                    "start": {"type": "string", "description": "ISO datetime without offset, if changing the start"},
+                    "end": {"type": "string", "description": "ISO datetime without offset, if changing the end"},
+                    "timezone": {"type": "string", "default": "Asia/Jerusalem"},
+                    "description": {"type": "string"},
+                    "location": {"type": "string"},
+                    "account": {"type": "string", "enum": ["business", "personal"], "default": "business"},
+                },
+                "required": ["event_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "close_search_leads",
             "description": "Search Close CRM for a lead/contact by name, email, phone, or company. Returns lead status, contact info, and recent notes.",
             "parameters": {
@@ -318,6 +346,78 @@ TOOLS = [
                     "query": {"type": "string", "description": "Name, email, phone, or company to search for"},
                     "max_results": {"type": "integer", "default": 5},
                 },
+                "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "close_create_lead",
+            "description": "Create a new lead in Close CRM with an optional contact, phone, email, address, and description.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "contact_name": {"type": "string"},
+                    "email": {"type": "string"},
+                    "phone": {"type": "string"},
+                    "description": {"type": "string"},
+                    "address": {"type": "string"},
+                },
+                "required": ["name"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "close_add_note",
+            "description": "Add a note to an existing Close CRM lead. Search for the lead first when only a name is known.",
+            "parameters": {
+                "type": "object",
+                "properties": {"lead_id": {"type": "string"}, "note": {"type": "string"}},
+                "required": ["lead_id", "note"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "close_create_task",
+            "description": "Create a dated follow-up task on an existing Close CRM lead.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "lead_id": {"type": "string"},
+                    "text": {"type": "string"},
+                    "date": {"type": "string", "description": "Due date YYYY-MM-DD"},
+                    "task_type": {"type": "string", "enum": ["lead", "outgoing_call"], "default": "lead"},
+                },
+                "required": ["lead_id", "text", "date"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "remember_memory",
+            "description": "Save a durable fact, preference, or deal detail for future conversations.",
+            "parameters": {
+                "type": "object",
+                "properties": {"key": {"type": "string"}, "value": {"type": "string"}},
+                "required": ["key", "value"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "recall_memory",
+            "description": "Search durable assistant memory for facts relevant to a person, deal, property, or topic.",
+            "parameters": {
+                "type": "object",
+                "properties": {"query": {"type": "string"}, "max_results": {"type": "integer", "default": 5}},
                 "required": ["query"],
             },
         },
@@ -758,6 +858,28 @@ def calendar_delete_event(event_id: str, account: str = "business") -> str:
     return f"Deleted event: {title}"
 
 
+def calendar_update_event(event_id: str, summary: str = None, start: str = None, end: str = None,
+                          timezone: str = "Asia/Jerusalem", description: str = None,
+                          location: str = None, account: str = "business") -> str:
+    svc = build("calendar", "v3", credentials=_gcal_creds(account))
+    body = {}
+    if summary is not None:
+        body["summary"] = summary
+    if start is not None:
+        body["start"] = {"dateTime": start, "timeZone": timezone}
+    if end is not None:
+        body["end"] = {"dateTime": end, "timeZone": timezone}
+    if description is not None:
+        body["description"] = description
+    if location is not None:
+        body["location"] = location
+    if not body:
+        return "Nothing to update."
+    event = svc.events().patch(calendarId="primary", eventId=event_id, body=body).execute()
+    link = event.get("htmlLink", "")
+    return f"Event updated: {event.get('summary', '(no title)')}" + (f" Link: {link}" if link else "")
+
+
 def close_search_leads(query: str, max_results: int = 5) -> str:
     api_key = os.environ["CLOSE_API_KEY"]
     res = http_requests.get(
@@ -785,6 +907,77 @@ def close_search_leads(query: str, max_results: int = 5) -> str:
             f"Close link: https://app.close.com/lead/{lead['id']}/"
         )
     return "\n\n".join(results)
+
+
+def _close_request(method: str, endpoint: str, payload: dict) -> dict:
+    api_key = os.environ["CLOSE_API_KEY"]
+    res = http_requests.request(
+        method, f"https://api.close.com/api/v1/{endpoint}", auth=(api_key, ""), json=payload, timeout=30
+    )
+    if res.status_code not in (200, 201):
+        raise RuntimeError(f"Close API error ({res.status_code}): {res.text[:500]}")
+    return res.json() if res.content else {}
+
+
+def close_create_lead(name: str, contact_name: str = "", email: str = "", phone: str = "",
+                      description: str = "", address: str = "") -> str:
+    body = {"name": name}
+    if description:
+        body["description"] = description
+    if address:
+        body["addresses"] = [{"address_1": address, "label": "business"}]
+    if contact_name or email or phone:
+        contact = {"name": contact_name or name}
+        if email:
+            contact["emails"] = [{"email": email, "type": "office"}]
+        if phone:
+            contact["phones"] = [{"phone": phone, "type": "mobile"}]
+        body["contacts"] = [contact]
+    result = _close_request("POST", "lead/", body)
+    link = result.get("html_url", f"https://app.close.com/lead/{result.get('id', '')}/")
+    return f"Created Close lead: {result.get('display_name', name)}. Link: {link}"
+
+
+def close_add_note(lead_id: str, note: str) -> str:
+    result = _close_request("POST", "activity/note/", {"lead_id": lead_id, "note": note})
+    return f"Added note to Close lead {lead_id}. Note ID: {result.get('id', '(created)')}"
+
+
+def close_create_task(lead_id: str, text: str, date: str, task_type: str = "lead") -> str:
+    result = _close_request("POST", "task/", {"_type": task_type, "lead_id": lead_id, "text": text, "date": date, "is_complete": False})
+    return f"Created Close task for {date}: {text}. Task ID: {result.get('id', '(created)')}"
+
+
+def remember_memory(key: str, value: str) -> str:
+    memories = []
+    if MEMORY_FILE.exists():
+        try:
+            memories = json.loads(MEMORY_FILE.read_text())
+        except (OSError, json.JSONDecodeError):
+            memories = []
+    memories = [m for m in memories if m.get("key", "").lower() != key.strip().lower()]
+    memories.append({"key": key.strip(), "value": value.strip(), "updated_at": datetime.now(USER_TZ).isoformat()})
+    MEMORY_FILE.write_text(json.dumps(memories[-500:], ensure_ascii=False, indent=2))
+    return f"Remembered: {key} = {value}"
+
+
+def recall_memory(query: str, max_results: int = 5) -> str:
+    if not MEMORY_FILE.exists():
+        return "No saved memories yet."
+    try:
+        memories = json.loads(MEMORY_FILE.read_text())
+    except (OSError, json.JSONDecodeError):
+        return "No saved memories yet."
+    terms = {term for term in re.findall(r"[\w@.\-]+", query.lower()) if len(term) > 2}
+    ranked = sorted(
+        memories,
+        key=lambda m: sum(term in f"{m.get('key', '')} {m.get('value', '')}".lower() for term in terms),
+        reverse=True,
+    )
+    matches = [m for m in ranked if any(term in f"{m.get('key', '')} {m.get('value', '')}".lower() for term in terms)]
+    if not matches:
+        return f"No saved memory matches '{query}'."
+    return "\n".join(f"- {m['key']}: {m['value']}" for m in matches[:max_results])
 
 
 def web_search(query: str, max_results: int = 5) -> str:
@@ -917,6 +1110,12 @@ TOOL_FN = {
     "calendar_create_event": calendar_create_event,
     "calendar_create_reminder": calendar_create_reminder,
     "calendar_delete_event": calendar_delete_event,
+    "calendar_update_event": calendar_update_event,
+    "close_create_lead": close_create_lead,
+    "close_add_note": close_add_note,
+    "close_create_task": close_create_task,
+    "remember_memory": remember_memory,
+    "recall_memory": recall_memory,
 }
 
 # Gemini wants tools as FunctionDeclarations rather than OpenAI's {"type": "function", ...}

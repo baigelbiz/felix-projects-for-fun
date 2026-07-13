@@ -20,6 +20,18 @@ instead, set `ANTHROPIC_API_KEY` (get one at https://console.anthropic.com/).
 .venv/bin/python main.py
 ```
 
+The WhatsApp bridge is `bot.js`; it uses `.env`, the local `.venv`, and the
+WhatsApp session directory. For the production server, deploy the current
+`main` branch with:
+
+```sh
+./deploy.sh
+```
+
+The bot sends a 07:00 Israel-time briefing, alerts the WhatsApp owner when it
+restarts or encounters an agent failure, and keeps long-term assistant memory
+in `.assistant_memory.json`.
+
 ## What's inside
 
 - `main.py` — an agent with a custom `roll_dice` tool (in-process MCP server),
