@@ -17,7 +17,9 @@ from pathlib import Path
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
-from openai import OpenAI
+from google import genai
+from google.genai import types as genai_types
+from openai import OpenAI  # still used for generate_image (gpt-image-1); the chat/tool-calling model is Gemini
 
 SESSION_FILE = Path(__file__).parent / ".whatsapp_session"
 CREDS_DIR = Path(__file__).parent / "google_creds"
@@ -25,12 +27,18 @@ RECEIPTS_CONFIG_FILE = Path(__file__).parent / ".receipts_config.json"
 _current_image_path = None  # set by run() before each query, read by log_receipt tool
 USER_TZ = ZoneInfo("Asia/Jerusalem")  # default timezone
 SAN_DIEGO_TZ = ZoneInfo("America/Los_Angeles")
+GEMINI_MODEL = "gemini-2.5-flash"
 
 SYSTEM_PROMPT = (
     "You support voice notes: when the user sends a voice note, it is automatically transcribed "
     "by Whisper and delivered to you as [Voice note]: <text>. You CAN understand voice notes — "
     "never tell the user you cannot listen to audio or that you lack audio capabilities. "
     "Simply respond to the transcribed content as if it were a normal text message. "
+    "You also support WhatsApp location pins: when the user shares one, it arrives as "
+    "[Location shared]: latitude=X, longitude=Y (optional label). Call reverse_geocode with "
+    "those coordinates to find out the actual address, then tell the user where that is and "
+    "ask what they'd like to do with it (e.g. save it as a lead's address, look up comps nearby, "
+    "get directions) — don't just repeat the raw coordinates back. "
     "You are Felix's personal assistant reached via WhatsApp, supporting his real estate "
     "business (Shefa Homes). Keep replies short and phone-friendly: plain text, no markdown "
     "tables or headers, no code blocks unless asked. WhatsApp does not render markdown links — "
@@ -260,6 +268,25 @@ TOOLS = [
                     "max_results": {"type": "integer", "default": 5},
                 },
                 "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "reverse_geocode",
+            "description": (
+                "Convert GPS coordinates from a shared WhatsApp location pin into a human-readable "
+                "street address. Always call this right after the user shares a location so you can "
+                "tell them what's actually there."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "latitude": {"type": "number"},
+                    "longitude": {"type": "number"},
+                },
+                "required": ["latitude", "longitude"],
             },
         },
     },
@@ -609,6 +636,21 @@ def web_search(query: str, max_results: int = 5) -> str:
     )
 
 
+def reverse_geocode(latitude: float, longitude: float) -> str:
+    res = http_requests.get(
+        "https://maps.googleapis.com/maps/api/geocode/json",
+        params={"latlng": f"{latitude},{longitude}", "key": os.environ["GOOGLE_MAPS_API_KEY"]},
+    )
+    if res.status_code != 200:
+        return f"Geocoding error: {res.text[:300]}"
+
+    data = res.json()
+    if data.get("status") != "OK" or not data.get("results"):
+        return f"Could not resolve an address for {latitude}, {longitude} ({data.get('status', 'unknown error')})."
+
+    return data["results"][0]["formatted_address"]
+
+
 def _sheets_drive_creds():
     token_path = CREDS_DIR / "sheets_drive_token.json"
     client_path = CREDS_DIR / "gcp-oauth.keys.json"
@@ -699,75 +741,85 @@ TOOL_FN = {
     "gif_search": gif_search,
     "close_search_leads": close_search_leads,
     "web_search": web_search,
+    "reverse_geocode": reverse_geocode,
     "log_receipt": log_receipt,
     "calendar_list_events": calendar_list_events,
     "calendar_create_event": calendar_create_event,
     "calendar_delete_event": calendar_delete_event,
 }
 
+# Gemini wants tools as FunctionDeclarations rather than OpenAI's {"type": "function", ...}
+# wrapper — derive them from TOOLS so there's one source of truth for the schemas.
+GEMINI_TOOLS = genai_types.Tool(function_declarations=[
+    genai_types.FunctionDeclaration(
+        name=t["function"]["name"],
+        description=t["function"]["description"],
+        parameters_json_schema=t["function"]["parameters"],
+    )
+    for t in TOOLS
+])
+
+
+def _build_contents(history: list, prompt: str, image_path: str = None) -> list:
+    contents = [
+        genai_types.Content(role=turn["role"], parts=[genai_types.Part.from_text(text=turn["text"])])
+        for turn in history
+    ]
+    parts = [genai_types.Part.from_text(text=prompt)]
+    if image_path:
+        ext = Path(image_path).suffix.lstrip(".").lower() or "jpeg"
+        if ext == "jpg":
+            ext = "jpeg"
+        parts.append(genai_types.Part.from_bytes(data=Path(image_path).read_bytes(), mime_type=f"image/{ext}"))
+    contents.append(genai_types.Content(role="user", parts=parts))
+    return contents
+
 
 def run(prompt: str, history: list, image_path: str = None) -> tuple[str, list]:
     global _current_image_path
     _current_image_path = image_path
-    client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
-    if image_path:
-        import base64
-        ext = Path(image_path).suffix.lstrip(".").lower() or "jpeg"
-        if ext == "jpg":
-            ext = "jpeg"
-        b64 = base64.b64encode(Path(image_path).read_bytes()).decode()
-        user_content = [
-            {"type": "text", "text": prompt},
-            {"type": "image_url", "image_url": {"url": f"data:image/{ext};base64,{b64}"}},
-        ]
-    else:
-        user_content = prompt
-    history = history + [{"role": "user", "content": user_content}]
-    messages = [{"role": "system", "content": SYSTEM_PROMPT}] + history
+    client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+    contents = _build_contents(history, prompt, image_path)
 
     for _ in range(10):  # max tool call rounds
-        response = client.chat.completions.create(
-            model="o4-mini",
-            messages=messages,
-            tools=TOOLS,
-            tool_choice="auto",
-            max_completion_tokens=4096,
+        response = client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=contents,
+            config=genai_types.GenerateContentConfig(
+                system_instruction=SYSTEM_PROMPT,
+                tools=[GEMINI_TOOLS],
+            ),
         )
-        msg = response.choices[0].message
+        function_calls = response.function_calls or []
 
-        if msg.tool_calls:
-            messages.append(msg)
+        if function_calls:
+            contents.append(response.candidates[0].content)
             photo_result = None
-            for tc in msg.tool_calls:
+            for fc in function_calls:
+                args = dict(fc.args or {})
                 try:
-                    args = json.loads(tc.function.arguments)
-                except json.JSONDecodeError:
-                    result = "Error: model returned malformed tool arguments, please try again"
-                    messages.append({"role": "tool", "tool_call_id": tc.id, "content": result})
-                    continue
-                try:
-                    result = TOOL_FN[tc.function.name](**args)
+                    result = TOOL_FN[fc.name](**args)
                 except Exception as e:
                     result = f"Error: {e}"
                 # A photo/generated-image result must reach bot.js verbatim — don't let the
                 # model paraphrase the PHOTO: marker into prose. Still run every tool call the
-                # model requested this round (and give each a tool response) before returning,
-                # so a photo result never causes other requested tool calls to be skipped.
+                # model requested this round (and give each a function response) before
+                # returning, so a photo result never causes other requested calls to be skipped.
                 if result.startswith("PHOTO:") and photo_result is None:
                     photo_result = result
-                    messages.append({"role": "tool", "tool_call_id": tc.id, "content": "Photo sent to user."})
+                    response_data = {"result": "Photo sent to user."}
                 else:
-                    messages.append({
-                        "role": "tool",
-                        "tool_call_id": tc.id,
-                        "content": result,
-                    })
+                    response_data = {"result": result}
+                contents.append(genai_types.Content(
+                    role="tool",
+                    parts=[genai_types.Part.from_function_response(name=fc.name, response=response_data)],
+                ))
             if photo_result is not None:
-                history.append({"role": "assistant", "content": photo_result})
+                history = history + [{"role": "user", "text": prompt}, {"role": "model", "text": photo_result}]
                 return photo_result, history
         else:
-            reply = msg.content or "(no reply)"
-            history.append({"role": "assistant", "content": reply})
+            reply = response.text or "(no reply)"
+            history = history + [{"role": "user", "text": prompt}, {"role": "model", "text": reply}]
             return reply, history
 
     return "Sorry, I got stuck in a loop.", history
@@ -780,6 +832,10 @@ def main():
     if SESSION_FILE.exists():
         try:
             history = json.loads(SESSION_FILE.read_text())
+            if not isinstance(history, list) or not all(
+                isinstance(t, dict) and "role" in t and "text" in t for t in history
+            ):
+                history = []  # stale/incompatible session format (e.g. from before the Gemini switch)
         except Exception:
             history = []
 

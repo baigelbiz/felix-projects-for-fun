@@ -15,8 +15,8 @@ CANNED_PROMPT = "Reply with exactly one word: pong"
 
 
 def main() -> int:
-    if "OPENAI_API_KEY" not in os.environ:
-        print("SKIP: OPENAI_API_KEY not set in this shell (bot.js normally supplies it via .env)")
+    if "GEMINI_API_KEY" not in os.environ:
+        print("SKIP: GEMINI_API_KEY not set in this shell (bot.js normally supplies it via .env)")
         return 0
 
     try:
