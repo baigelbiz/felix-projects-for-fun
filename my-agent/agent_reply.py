@@ -737,6 +737,7 @@ def run(prompt: str, history: list, image_path: str = None) -> tuple[str, list]:
 
         if msg.tool_calls:
             messages.append(msg)
+            photo_result = None
             for tc in msg.tool_calls:
                 try:
                     args = json.loads(tc.function.arguments)
@@ -748,16 +749,22 @@ def run(prompt: str, history: list, image_path: str = None) -> tuple[str, list]:
                     result = TOOL_FN[tc.function.name](**args)
                 except Exception as e:
                     result = f"Error: {e}"
-                # A photo/generated-image result must reach bot.js verbatim —
-                # don't let the model paraphrase the PHOTO: marker into prose.
-                if result.startswith("PHOTO:"):
-                    history.append({"role": "assistant", "content": result})
-                    return result, history
-                messages.append({
-                    "role": "tool",
-                    "tool_call_id": tc.id,
-                    "content": result,
-                })
+                # A photo/generated-image result must reach bot.js verbatim — don't let the
+                # model paraphrase the PHOTO: marker into prose. Still run every tool call the
+                # model requested this round (and give each a tool response) before returning,
+                # so a photo result never causes other requested tool calls to be skipped.
+                if result.startswith("PHOTO:") and photo_result is None:
+                    photo_result = result
+                    messages.append({"role": "tool", "tool_call_id": tc.id, "content": "Photo sent to user."})
+                else:
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tc.id,
+                        "content": result,
+                    })
+            if photo_result is not None:
+                history.append({"role": "assistant", "content": photo_result})
+                return photo_result, history
         else:
             reply = msg.content or "(no reply)"
             history.append({"role": "assistant", "content": reply})
