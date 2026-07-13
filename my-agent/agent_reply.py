@@ -731,7 +731,7 @@ def run(prompt: str, history: list, image_path: str = None) -> tuple[str, list]:
             messages=messages,
             tools=TOOLS,
             tool_choice="auto",
-            max_tokens=4096,
+            max_completion_tokens=4096,
         )
         msg = response.choices[0].message
 
