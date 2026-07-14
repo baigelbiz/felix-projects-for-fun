@@ -10,6 +10,8 @@ import os
 import re
 import sys
 import tempfile
+import time
+import httpx
 import requests as http_requests
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
@@ -19,6 +21,7 @@ from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from google import genai
+from google.genai import errors as genai_errors
 from google.genai import types as genai_types
 from openai import OpenAI  # still used for generate_image (gpt-image-1); the chat/tool-calling model is Gemini
 
@@ -1145,6 +1148,28 @@ def _build_contents(history: list, prompt: str, image_path: str = None) -> list:
     return contents
 
 
+def _generate_with_retry(client, **kwargs):
+    """Call Gemini with retry/backoff for transient failures — rate limits (429),
+    server errors (5xx), and network blips — so a momentary API hiccup doesn't
+    fail the whole WhatsApp reply. Other errors (bad request, auth) raise immediately."""
+    max_attempts = 5
+    delay = 1
+    for attempt in range(1, max_attempts + 1):
+        try:
+            return client.models.generate_content(**kwargs)
+        except genai_errors.ServerError:
+            if attempt == max_attempts:
+                raise
+        except genai_errors.ClientError as e:
+            if e.code != 429 or attempt == max_attempts:
+                raise
+        except httpx.TransportError:
+            if attempt == max_attempts:
+                raise
+        time.sleep(delay)
+        delay *= 2
+
+
 def run(prompt: str, history: list, image_path: str = None) -> tuple[str, list]:
     global _current_image_path
     _current_image_path = image_path
@@ -1152,7 +1177,8 @@ def run(prompt: str, history: list, image_path: str = None) -> tuple[str, list]:
     contents = _build_contents(history, prompt, image_path)
 
     for _ in range(10):  # max tool call rounds
-        response = client.models.generate_content(
+        response = _generate_with_retry(
+            client,
             model=GEMINI_MODEL,
             contents=contents,
             config=genai_types.GenerateContentConfig(
