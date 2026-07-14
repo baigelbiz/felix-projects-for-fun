@@ -45,16 +45,14 @@ SYSTEM_PROMPT = (
     "business (Shefa Homes). Keep replies short and phone-friendly: plain text, no markdown "
     "tables or headers, no code blocks unless asked. WhatsApp does not render markdown links — "
     "never write [text](url). When sharing a link, paste the raw URL by itself so WhatsApp auto-links it. "
-    "If the user writes to you in Hebrew, reply in fluent, natural, grammatically correct Hebrew — "
-    "double-check word choice before sending (e.g. never confuse מחקתי/טיפלתי עם חליתי). Do not mix "
-    "English words into the middle of a Hebrew sentence or word. If you're unsure a Hebrew phrasing is "
-    "natural, prefer a simpler, more common way to say it. "
-    "EXCEPTION — proper nouns and business terms: when the user's Hebrew message contains English names "
-    "of people, places, companies, or products (e.g. Kenneth, North Carolina, Close CRM), keep them "
-    "EXACTLY as given, in English letters, everywhere you use them — in replies, event titles, reminders, "
-    "and notes. Never translate, transliterate, or respell a name. A voice-note transcription may render "
-    "an English name in Hebrew letters (e.g. קנת׳); when you can tell it's a name, write it back in its "
-    "normal English spelling. "
+    "LANGUAGE: the user often writes and speaks to you in Hebrew — understand it fully, but ALWAYS reply "
+    "in English, even when the message was in Hebrew. Only produce Hebrew text when the user explicitly "
+    "asks for Hebrew output (e.g. a listing description, an SMS script, or marketing copy in Hebrew). "
+    "Proper nouns and business terms: when a message contains English names of people, places, companies, "
+    "or products (e.g. Kenneth, North Carolina, Close CRM), keep them EXACTLY as given, in English "
+    "letters, everywhere you use them — in replies, event titles, reminders, and notes. Never translate, "
+    "transliterate, or respell a name. A voice-note transcription may render an English name in Hebrew "
+    "letters (e.g. קנת׳); when you can tell it's a name, write it back in its normal English spelling. "
     "You're also a skilled marketing/sales copywriter for real estate: cold outreach emails, "
     "follow-up sequences, listing descriptions, SMS/WhatsApp scripts to sellers and buyers, social "
     "captions. Write punchy, direct copy — no fluff, no corporate tone. If the audience, tone, or "
@@ -419,6 +417,18 @@ TOOLS = [
                 "type": "object",
                 "properties": {"query": {"type": "string"}, "max_results": {"type": "integer", "default": 5}},
                 "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "forget_memory",
+            "description": "Delete a saved fact from long-term memory by its key (as shown by recall_memory).",
+            "parameters": {
+                "type": "object",
+                "properties": {"key": {"type": "string"}},
+                "required": ["key"],
             },
         },
     },
@@ -980,6 +990,39 @@ def recall_memory(query: str, max_results: int = 5) -> str:
     return "\n".join(f"- {m['key']}: {m['value']}" for m in matches[:max_results])
 
 
+def forget_memory(key: str) -> str:
+    if not MEMORY_FILE.exists():
+        return "No saved memories yet."
+    try:
+        memories = json.loads(MEMORY_FILE.read_text())
+    except (OSError, json.JSONDecodeError):
+        return "No saved memories yet."
+    remaining = [m for m in memories if m.get("key", "").lower() != key.strip().lower()]
+    if len(remaining) == len(memories):
+        return f"No memory with key '{key}'. Use recall_memory to see what's saved."
+    MEMORY_FILE.write_text(json.dumps(remaining, ensure_ascii=False, indent=2))
+    return f"Forgot: {key}"
+
+
+def _system_prompt_with_memory() -> str:
+    """Append the most recent memories to the system prompt so the model just
+    knows them without having to decide to call recall_memory."""
+    if not MEMORY_FILE.exists():
+        return SYSTEM_PROMPT
+    try:
+        memories = json.loads(MEMORY_FILE.read_text())
+    except (OSError, json.JSONDecodeError):
+        return SYSTEM_PROMPT
+    if not memories:
+        return SYSTEM_PROMPT
+    recent = memories[-40:]
+    lines = "\n".join(f"- {m.get('key', '')}: {m.get('value', '')}" for m in recent)
+    note = ""
+    if len(recent) < len(memories):
+        note = f"\n(These are the {len(recent)} most recent of {len(memories)} saved facts — use recall_memory to search the rest.)"
+    return SYSTEM_PROMPT + "\n\nLONG-TERM MEMORY — facts you saved earlier and simply know:\n" + lines + note
+
+
 def web_search(query: str, max_results: int = 5) -> str:
     res = http_requests.get(
         "https://api.search.brave.com/res/v1/web/search",
@@ -1116,6 +1159,7 @@ TOOL_FN = {
     "close_create_task": close_create_task,
     "remember_memory": remember_memory,
     "recall_memory": recall_memory,
+    "forget_memory": forget_memory,
 }
 
 # Gemini wants tools as FunctionDeclarations rather than OpenAI's {"type": "function", ...}
@@ -1156,7 +1200,7 @@ def run(prompt: str, history: list, image_path: str = None) -> tuple[str, list]:
             model=GEMINI_MODEL,
             contents=contents,
             config=genai_types.GenerateContentConfig(
-                system_instruction=SYSTEM_PROMPT,
+                system_instruction=_system_prompt_with_memory(),
                 tools=[GEMINI_TOOLS],
             ),
         )
