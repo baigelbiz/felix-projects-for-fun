@@ -114,12 +114,42 @@ function scheduleMorningBriefing() {
 }
 
 client.on("ready", async () => {
+  clientReady = true;
   console.log("READY: WhatsApp bridge is live. Message yourself starting with '@a '.");
   if (process.env.BOT_SEND_STARTUP_ALERT !== "false") {
     await sendProactiveMessage(`✅ WhatsApp assistant is online (${new Date().toLocaleString("en-IL", { timeZone: "Asia/Jerusalem" })}).`).catch((e) => console.error("startup alert failed:", e.message));
   }
   scheduleMorningBriefing();
 });
+
+// Outbox: external scripts (the cron watchdog) drop .txt files here to have
+// them sent to Felix. In-process alerts can't fire when the bot process is
+// dead — the watchdog writes here, and the alert goes out once we're back up.
+const OUTBOX_DIR = path.join(__dirname, ".outbox");
+let clientReady = false;
+
+setInterval(async () => {
+  if (!clientReady) return;
+  let files;
+  try {
+    files = fs.readdirSync(OUTBOX_DIR).filter((f) => f.endsWith(".txt"));
+  } catch {
+    return; // no outbox dir yet
+  }
+  for (const f of files.sort()) {
+    const full = path.join(OUTBOX_DIR, f);
+    try {
+      const text = fs.readFileSync(full, "utf8").trim();
+      if (text) {
+        await sendProactiveMessage(text);
+        console.log(`-> outbox sent: ${f}`);
+      }
+      fs.unlinkSync(full);
+    } catch (e) {
+      console.error(`outbox send failed (${f}):`, e.message);
+    }
+  }
+}, 15_000);
 
 async function transcribeVoiceNote(msg) {
   const media = await msg.downloadMedia();

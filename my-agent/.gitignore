@@ -9,4 +9,5 @@ qr.png
 .whatsapp_session
 .assistant_memory.json
 .bot_state.json
+.outbox/
 backup-*
