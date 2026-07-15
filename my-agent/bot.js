@@ -278,23 +278,33 @@ function processQueue() {
   );
 }
 
-client.on("auth_failure", (message) => {
+// These four handlers all cover states where the WhatsApp client (or the
+// whole process) is broken but Node itself hasn't crashed — pm2 would still
+// report the process as "online" and the watchdog would never restart it,
+// leaving the bot silently unresponsive. Exiting lets pm2's own autorestart
+// bring it back immediately (the persisted LocalAuth session avoids a fresh
+// QR scan unless WhatsApp itself logged the session out).
+client.on("auth_failure", async (message) => {
   console.error("WhatsApp auth failure:", message);
-  sendProactiveMessage(`🚨 WhatsApp authentication failed: ${String(message).slice(0, 300)}`).catch(() => {});
+  await sendProactiveMessage(`🚨 WhatsApp authentication failed: ${String(message).slice(0, 300)}`).catch(() => {});
+  process.exit(1);
 });
 
 client.on("disconnected", (reason) => {
   console.error("WhatsApp disconnected:", reason);
+  process.exit(1);
 });
 
-process.on("uncaughtException", (error) => {
+process.on("uncaughtException", async (error) => {
   console.error("uncaught exception:", error);
-  sendProactiveMessage(`🚨 Bot error: ${error.message.slice(0, 300)}`).catch(() => {});
+  await sendProactiveMessage(`🚨 Bot error: ${error.message.slice(0, 300)}`).catch(() => {});
+  process.exit(1);
 });
 
-process.on("unhandledRejection", (error) => {
+process.on("unhandledRejection", async (error) => {
   console.error("unhandled rejection:", error);
-  sendProactiveMessage(`🚨 Bot promise failure: ${String(error).slice(0, 300)}`).catch(() => {});
+  await sendProactiveMessage(`🚨 Bot promise failure: ${String(error).slice(0, 300)}`).catch(() => {});
+  process.exit(1);
 });
 
 client.initialize();
