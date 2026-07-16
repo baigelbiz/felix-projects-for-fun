@@ -71,28 +71,20 @@ function saveBotState() {
   fs.writeFileSync(STATE_FILE, JSON.stringify(botState, null, 2));
 }
 
-function runAgent(prompt) {
-  return new Promise((resolve, reject) => {
-    execFile(PYTHON, [SCRIPT, prompt], { timeout: 300_000, maxBuffer: 10 * 1024 * 1024, cwd: __dirname }, (err, stdout, stderr) => {
-      if (err) reject(new Error((stderr || err.message).trim()));
-      else resolve(stdout.trim());
-    });
-  });
-}
-
-async function sendMorningBriefing() {
-  try {
-    const briefing = await runAgent(
+// Routed through the same agentQueue/agentBusy mutex as interactive messages
+// (see processQueue) instead of a separate execFile call — both invocations
+// run agent_reply.py, which reads and rewrites the shared .whatsapp_session
+// and .assistant_memory.json files, so running two at once could clobber
+// each other's state if a briefing fires while a user message is in flight.
+function sendMorningBriefing() {
+  agentQueue.push({
+    prompt:
       "[Scheduled morning briefing] Prepare my concise morning briefing for today. " +
       "Read both business and personal calendars, search Close CRM for new leads or follow-ups due, " +
-      "and include only useful action items. Use short WhatsApp-friendly bullets."
-    );
-    await sendProactiveMessage("Good morning.\n\n" + briefing);
-    console.log("-> morning briefing sent");
-  } catch (e) {
-    console.error("morning briefing failed:", e.message);
-    await sendProactiveMessage(`⚠️ Morning briefing failed: ${e.message.slice(0, 300)}`).catch(() => {});
-  }
+      "and include only useful action items. Use short WhatsApp-friendly bullets.",
+    isBriefing: true,
+  });
+  processQueue();
 }
 
 function scheduleMorningBriefing() {
@@ -234,7 +226,7 @@ client.on("message_create", async (msg) => {
 function processQueue() {
   if (agentBusy || agentQueue.length === 0) return;
   agentBusy = true;
-  const { prompt, imagePath, msg } = agentQueue.shift();
+  const { prompt, imagePath, msg, isBriefing } = agentQueue.shift();
   console.log(`-> agent: ${prompt.slice(0, 80)}`);
   const scriptArgs = imagePath ? [SCRIPT, prompt, imagePath] : [SCRIPT, prompt];
   execFile(
@@ -243,6 +235,23 @@ function processQueue() {
     { timeout: 300_000, maxBuffer: 10 * 1024 * 1024, cwd: __dirname },
     async (err, stdout, stderr) => {
       if (imagePath) fs.unlink(imagePath, () => {});
+
+      if (isBriefing) {
+        try {
+          if (err) {
+            console.error("morning briefing failed:", (stderr || err.message).trim());
+            await sendProactiveMessage(`⚠️ Morning briefing failed: ${(stderr || err.message).slice(0, 300)}`).catch(() => {});
+          } else {
+            await sendProactiveMessage("Good morning.\n\n" + stdout.trim());
+            console.log("-> morning briefing sent");
+          }
+        } finally {
+          agentBusy = false;
+          processQueue();
+        }
+        return;
+      }
+
       if (err) {
         console.error("agent error (full):\n", stderr || err.message);
         await sendProactiveMessage(`⚠️ Agent/tool failure: ${(stderr || err.message).slice(0, 500)}`).catch(() => {});
