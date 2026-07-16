@@ -615,16 +615,10 @@ def _photos_creds():
 def photos_search(query: str, max_results: int = 1) -> str:
     creds = _photos_creds()
     headers = {"Authorization": f"Bearer {creds.token}"}
-    body = {"pageSize": max_results, "filters": {"contentFilter": {"includedContentCategories": []}}}
 
-    # Try text search via albums/mediaItems:search
-    res = http_requests.post(
-        "https://photoslibrary.googleapis.com/v1/mediaItems:search",
-        headers=headers,
-        json={"pageSize": max_results, "filters": {}},
-    )
-
-    # Use the simpler list endpoint with no filter first, then try search
+    # The Photos Library API's mediaItems:search only filters by category/date,
+    # not free-text keywords, so `query` can't be used to filter server-side —
+    # this always returns the most recently added items.
     search_res = http_requests.post(
         "https://photoslibrary.googleapis.com/v1/mediaItems:search",
         headers=headers,
