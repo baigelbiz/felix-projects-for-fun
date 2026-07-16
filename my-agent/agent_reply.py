@@ -25,6 +25,14 @@ from google.genai import errors as genai_errors
 from google.genai import types as genai_types
 from openai import OpenAI  # still used for generate_image (gpt-image-1); the chat/tool-calling model is Gemini
 
+def _atomic_write_text(path: Path, text: str) -> None:
+    """Write via a temp file + rename so a crash/kill mid-write (pm2 restarts are
+    routine) can't leave a truncated, unparseable JSON file behind."""
+    tmp = path.with_suffix(path.suffix + f".tmp{os.getpid()}")
+    tmp.write_text(text)
+    tmp.replace(path)
+
+
 SESSION_FILE = Path(__file__).parent / ".whatsapp_session"
 MEMORY_FILE = Path(__file__).parent / ".assistant_memory.json"
 CREDS_DIR = Path(__file__).parent / "google_creds"
@@ -568,13 +576,20 @@ def gmail_read(message_id: str, account: str = "business") -> str:
     msg = svc.users().messages().get(userId="me", id=message_id, format="full").execute()
     headers = {h["name"]: h["value"] for h in msg["payload"]["headers"]}
 
-    def get_body(payload):
-        if payload.get("body", {}).get("data"):
+    def find_part(payload, mime_type):
+        # Recurse: real messages are often multipart/mixed -> multipart/alternative
+        # -> text/plain, so a single level of `parts` isn't enough (e.g. any email
+        # with an attachment or a signature image nests one level deeper).
+        if payload.get("mimeType") == mime_type and payload.get("body", {}).get("data"):
             return base64.urlsafe_b64decode(payload["body"]["data"]).decode("utf-8", errors="replace")
         for part in payload.get("parts", []):
-            if part["mimeType"] == "text/plain":
-                return base64.urlsafe_b64decode(part["body"]["data"]).decode("utf-8", errors="replace")
-        return "(no text body)"
+            found = find_part(part, mime_type)
+            if found is not None:
+                return found
+        return None
+
+    def get_body(payload):
+        return find_part(payload, "text/plain") or find_part(payload, "text/html") or "(no text body)"
 
     body = get_body(msg["payload"])
     return f"From: {headers.get('From','')}\nSubject: {headers.get('Subject','')}\nDate: {headers.get('Date','')}\n\n{body[:3000]}"
@@ -964,7 +979,7 @@ def remember_memory(key: str, value: str) -> str:
             memories = []
     memories = [m for m in memories if m.get("key", "").lower() != key.strip().lower()]
     memories.append({"key": key.strip(), "value": value.strip(), "updated_at": datetime.now(USER_TZ).isoformat()})
-    MEMORY_FILE.write_text(json.dumps(memories[-500:], ensure_ascii=False, indent=2))
+    _atomic_write_text(MEMORY_FILE, json.dumps(memories[-500:], ensure_ascii=False, indent=2))
     return f"Remembered: {key} = {value}"
 
 
@@ -997,7 +1012,7 @@ def forget_memory(key: str) -> str:
     remaining = [m for m in memories if m.get("key", "").lower() != key.strip().lower()]
     if len(remaining) == len(memories):
         return f"No memory with key '{key}'. Use recall_memory to see what's saved."
-    MEMORY_FILE.write_text(json.dumps(remaining, ensure_ascii=False, indent=2))
+    _atomic_write_text(MEMORY_FILE, json.dumps(remaining, ensure_ascii=False, indent=2))
     return f"Forgot: {key}"
 
 
@@ -1214,52 +1229,75 @@ def run(prompt: str, history: list, image_path: str = None) -> tuple[str, list]:
     client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
     contents = _build_contents(history, prompt, image_path)
 
-    for _ in range(10):  # max tool call rounds
-        response = _generate_with_retry(
-            client,
-            model=GEMINI_MODEL,
-            contents=contents,
-            config=genai_types.GenerateContentConfig(
-                system_instruction=_system_prompt_with_memory(),
-                tools=[GEMINI_TOOLS],
-            ),
-        )
-        function_calls = response.function_calls or []
+    try:
+        for _ in range(10):  # max tool call rounds
+            response = _generate_with_retry(
+                client,
+                model=GEMINI_MODEL,
+                contents=contents,
+                config=genai_types.GenerateContentConfig(
+                    system_instruction=_system_prompt_with_memory(),
+                    tools=[GEMINI_TOOLS],
+                ),
+            )
+            function_calls = response.function_calls or []
 
-        if function_calls:
-            contents.append(response.candidates[0].content)
-            photo_result = None
-            for fc in function_calls:
-                args = dict(fc.args or {})
-                try:
-                    result = TOOL_FN[fc.name](**args)
-                except Exception as e:
-                    result = f"Error: {e}"
-                # A photo/generated-image result must reach bot.js verbatim — don't let the
-                # model paraphrase the PHOTO: marker into prose. Still run every tool call the
-                # model requested this round (and give each a function response) before
-                # returning, so a photo result never causes other requested calls to be skipped.
-                if result.startswith("PHOTO:") and photo_result is None:
-                    photo_result = result
-                    response_data = {"result": "Photo sent to user."}
-                else:
-                    response_data = {"result": result}
-                contents.append(genai_types.Content(
-                    role="tool",
-                    parts=[genai_types.Part.from_function_response(name=fc.name, response=response_data)],
-                ))
-            if photo_result is not None:
-                history = history + [{"role": "user", "text": prompt}, {"role": "model", "text": photo_result}]
-                return photo_result, history
-        else:
-            reply = response.text or "(no reply)"
-            history = history + [{"role": "user", "text": prompt}, {"role": "model", "text": reply}]
-            return reply, history
+            if function_calls:
+                contents.append(response.candidates[0].content)
+                photo_result = None
+                for fc in function_calls:
+                    args = dict(fc.args or {})
+                    try:
+                        result = TOOL_FN[fc.name](**args)
+                    except Exception as e:
+                        result = f"Error: {e}"
+                    # A photo/generated-image result must reach bot.js verbatim — don't let the
+                    # model paraphrase the PHOTO: marker into prose. Still run every tool call the
+                    # model requested this round (and give each a function response) before
+                    # returning, so a photo result never causes other requested calls to be skipped.
+                    if result.startswith("PHOTO:") and photo_result is None:
+                        photo_result = result
+                        response_data = {"result": "Photo sent to user."}
+                    else:
+                        response_data = {"result": result}
+                    contents.append(genai_types.Content(
+                        role="tool",
+                        parts=[genai_types.Part.from_function_response(name=fc.name, response=response_data)],
+                    ))
+                if photo_result is not None:
+                    # Store a clean description in history, not the raw "PHOTO:<tmp-path>"
+                    # marker — bot.js deletes that temp file right after sending, and the
+                    # marker is meaningless (and misleading if ever echoed back) on a later turn.
+                    caption = photo_result.split("\n", 1)[1] if "\n" in photo_result else "a photo"
+                    history = history + [
+                        {"role": "user", "text": prompt},
+                        {"role": "model", "text": f"[Sent photo to user: {caption}]"},
+                    ]
+                    return photo_result, history
+            else:
+                reply = response.text or "(no reply)"
+                history = history + [{"role": "user", "text": prompt}, {"role": "model", "text": reply}]
+                return reply, history
 
-    return "Sorry, I got stuck in a loop.", history
+        # Hit the round cap: side-effecting tool calls above (leads created, events
+        # booked, etc.) already happened against real APIs even though we're giving
+        # up here, so record that rather than silently dropping all trace of them.
+        history = history + [
+            {"role": "user", "text": prompt},
+            {"role": "model", "text": "Sorry, I got stuck in a loop after several tool calls — "
+                                       "some actions above may have already been taken. Please "
+                                       "check before repeating the request."},
+        ]
+        return "Sorry, I got stuck in a loop.", history
+    except Exception as e:
+        # A transient Gemini failure (rate limit, 5xx, safety-filtered/empty
+        # response, network blip) must not crash the process — that would deny
+        # the user any reply at all instead of just this one apology.
+        return f"⚠️ Sorry, I hit an error talking to the model: {e}", history
 
 
 def main():
+    sys.stdout.reconfigure(encoding="utf-8")
     prompt = sys.argv[1]
     image_path = sys.argv[2] if len(sys.argv) > 2 else None
     history = []
@@ -1275,9 +1313,15 @@ def main():
 
     reply, history = run(prompt, history, image_path)
 
-    # Keep last 20 messages to avoid unbounded growth
-    SESSION_FILE.write_text(json.dumps(history[-20:]))
+    # Print the reply before persisting session state — a save failure (e.g. disk
+    # full) must not swallow a reply the model already produced.
     print(reply)
+
+    try:
+        # Keep last 20 messages to avoid unbounded growth
+        _atomic_write_text(SESSION_FILE, json.dumps(history[-20:]))
+    except Exception as e:
+        print(f"(session not saved: {e})", file=sys.stderr)
 
 
 if __name__ == "__main__":
