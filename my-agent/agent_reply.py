@@ -1260,8 +1260,11 @@ def run(prompt: str, history: list, image_path: str = None) -> tuple[str, list]:
                         response_data = {"result": "Photo sent to user."}
                     else:
                         response_data = {"result": result}
+                    # Gemini requires Content.role to be "user" or "model" — "tool" is
+                    # rejected by the API with an "invalid role" error, which broke every
+                    # tool-calling turn (calendar, CRM, memory, search, receipts, images...).
                     contents.append(genai_types.Content(
-                        role="tool",
+                        role="user",
                         parts=[genai_types.Part.from_function_response(name=fc.name, response=response_data)],
                     ))
                 if photo_result is not None:
