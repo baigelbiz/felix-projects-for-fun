@@ -6,3 +6,5 @@ node_modules/
 .wwebjs_cache/
 .wwebjs_auth/
 qr.png
+publisher/.env
+publisher/tokens.json
