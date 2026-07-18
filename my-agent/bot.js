@@ -62,8 +62,10 @@ client.on("qr", async (qr) => {
 });
 
 async function sendProactiveMessage(text) {
+  // Newer WhatsApp Web versions make wwebjs sendMessage resolve undefined even
+  // when the message is delivered — never crash on the missing return value.
   const sent = await client.sendMessage(ALLOWED_IDS[0], BOT_MARK + text.slice(0, 4000));
-  sentByBot.add(sent.id?._serialized);
+  if (sent?.id?._serialized) sentByBot.add(sent.id._serialized);
   return sent;
 }
 
@@ -271,11 +273,11 @@ function processQueue() {
           const media = MessageMedia.fromFilePath(photoPath);
           const chat = await msg.getChat();
           const sent = await chat.sendMessage(media, { caption: BOT_MARK + (caption || "") });
-          sentByBot.add(sent.id?._serialized);
+          if (sent?.id?._serialized) sentByBot.add(sent.id._serialized);
           fs.unlinkSync(photoPath);
         } else {
           const sent = await msg.reply(BOT_MARK + raw.slice(0, 4000));
-          sentByBot.add(sent.id?._serialized);
+          if (sent?.id?._serialized) sentByBot.add(sent.id._serialized);
         }
       } catch (e) {
         console.error("reply failed:", e.message);
