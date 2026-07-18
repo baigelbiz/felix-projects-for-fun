@@ -242,8 +242,12 @@ function processQueue() {
             console.error("morning briefing failed:", (stderr || err.message).trim());
             await sendProactiveMessage(`⚠️ Morning briefing failed: ${(stderr || err.message).slice(0, 300)}`).catch(() => {});
           } else {
-            await sendProactiveMessage("Good morning.\n\n" + stdout.trim());
-            console.log("-> morning briefing sent");
+            try {
+              await sendProactiveMessage("Good morning.\n\n" + stdout.trim());
+              console.log("-> morning briefing sent");
+            } catch (e) {
+              console.error("morning briefing send failed:", e.message);
+            }
           }
         } finally {
           agentBusy = false;
