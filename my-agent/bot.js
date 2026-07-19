@@ -61,10 +61,30 @@ client.on("qr", async (qr) => {
   console.log("QR code written to qr.png — scan from WhatsApp > Settings > Linked Devices");
 });
 
+// whatsapp-web.js sends go through Puppeteer and can hang indefinitely (dead
+// page, lost devtools connection) instead of rejecting. Every send in this
+// file is awaited by code that depends on it eventually settling — most
+// importantly agentBusy in processQueue, which only resets after a send
+// finishes. An unbounded hang there wedges the queue forever: pm2 still sees
+// the process as "online" so the watchdog never restarts it, and the bot goes
+// silently unresponsive. Race every send against a timeout so it always
+// settles one way or another.
+function withTimeout(promise, ms, label) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
 async function sendProactiveMessage(text) {
   // Newer WhatsApp Web versions make wwebjs sendMessage resolve undefined even
   // when the message is delivered — never crash on the missing return value.
-  const sent = await client.sendMessage(ALLOWED_IDS[0], BOT_MARK + text.slice(0, 4000));
+  const sent = await withTimeout(
+    client.sendMessage(ALLOWED_IDS[0], BOT_MARK + text.slice(0, 4000)),
+    30_000,
+    "sendProactiveMessage"
+  );
   if (sent?.id?._serialized) sentByBot.add(sent.id._serialized);
   return sent;
 }
@@ -271,12 +291,16 @@ function processQueue() {
           const photoPath = lines[0].replace("PHOTO:", "").trim();
           const caption = lines.slice(1).join("\n").trim();
           const media = MessageMedia.fromFilePath(photoPath);
-          const chat = await msg.getChat();
-          const sent = await chat.sendMessage(media, { caption: BOT_MARK + (caption || "") });
+          const chat = await withTimeout(msg.getChat(), 30_000, "msg.getChat");
+          const sent = await withTimeout(
+            chat.sendMessage(media, { caption: BOT_MARK + (caption || "") }),
+            30_000,
+            "chat.sendMessage"
+          );
           if (sent?.id?._serialized) sentByBot.add(sent.id._serialized);
           fs.unlinkSync(photoPath);
         } else {
-          const sent = await msg.reply(BOT_MARK + raw.slice(0, 4000));
+          const sent = await withTimeout(msg.reply(BOT_MARK + raw.slice(0, 4000)), 30_000, "msg.reply");
           if (sent?.id?._serialized) sentByBot.add(sent.id._serialized);
         }
       } catch (e) {
