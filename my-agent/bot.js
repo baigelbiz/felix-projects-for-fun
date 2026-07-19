@@ -165,21 +165,43 @@ setInterval(async () => {
   }
 }, 15_000);
 
+// downloadMedia() for a "ptt" (live-recorded) voice note is known to come back
+// empty/undefined if called the instant the message event fires — WhatsApp
+// hasn't finished syncing the media server-side yet. Retry with backoff
+// before giving up instead of failing on the first empty response.
+async function _downloadVoiceMedia(msg) {
+  let lastMedia;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    lastMedia = await msg.downloadMedia();
+    if (lastMedia && lastMedia.data) return lastMedia;
+    if (attempt < 3) await new Promise((r) => setTimeout(r, 1000 * attempt));
+  }
+  throw new Error(
+    `WhatsApp didn't return the voice note's audio (downloadMedia gave ${
+      lastMedia ? "empty data" : "no media"
+    } after 3 tries) — try sending it again.`
+  );
+}
+
 async function transcribeVoiceNote(msg) {
-  const media = await msg.downloadMedia();
-  const tmpFile = path.join(os.tmpdir(), `wa_voice_${Date.now()}.ogg`);
+  const media = await _downloadVoiceMedia(msg);
+  const tmpFile = path.join(os.tmpdir(), `wa_voice_${Date.now()}_${process.hrtime.bigint()}.ogg`);
   fs.writeFileSync(tmpFile, Buffer.from(media.data, "base64"));
   try {
-    const transcript = await openai.audio.transcriptions.create({
-      file: fs.createReadStream(tmpFile),
-      model: "whisper-1",
-      language: "he",
-      // Bias Whisper to keep embedded English names/terms in English letters
-      // instead of forcing them into Hebrew spelling.
-      prompt:
-        "שיחה עסקית בעברית על נדל\"ן. שמות של אנשים, מקומות וחברות באנגלית נשארים באנגלית, " +
-        "למשל: Kenneth, North Carolina, San Diego, Close CRM, Shefa Homes.",
-    });
+    const transcript = await withTimeout(
+      openai.audio.transcriptions.create({
+        file: fs.createReadStream(tmpFile),
+        model: "whisper-1",
+        language: "he",
+        // Bias Whisper to keep embedded English names/terms in English letters
+        // instead of forcing them into Hebrew spelling.
+        prompt:
+          "שיחה עסקית בעברית על נדל\"ן. שמות של אנשים, מקומות וחברות באנגלית נשארים באנגלית, " +
+          "למשל: Kenneth, North Carolina, San Diego, Close CRM, Shefa Homes.",
+      }),
+      60_000,
+      "Whisper transcription"
+    );
     return transcript.text;
   } finally {
     fs.unlinkSync(tmpFile);
@@ -219,21 +241,31 @@ client.on("message_create", async (msg) => {
       prompt = `[Voice note]: ${transcript}`;
       console.log(`-> transcribed: ${transcript.slice(0, 80)}`);
     } catch (e) {
-      console.error("transcription failed:", e.message);
-      msg.reply(`${BOT_MARK}⚠️ Couldn't transcribe voice note: ${e.message.slice(0, 200)}`);
+      // Log the full error (name + stack), not just .message — a bare
+      // .message can be misleadingly short (e.g. for aborted/malformed
+      // responses) and isn't enough to diagnose a production failure from.
+      console.error("transcription failed:", e.stack || e);
+      const detail = (e && e.message) || String(e) || "unknown error";
+      await withTimeout(msg.reply(`${BOT_MARK}⚠️ Couldn't transcribe voice note: ${detail.slice(0, 300)}`), 30_000, "msg.reply").catch((e2) =>
+        console.error("voice-note error reply failed:", e2.message)
+      );
       return;
     }
   } else if (isImage) {
     try {
       const media = await msg.downloadMedia();
+      if (!media || !media.data) throw new Error("downloadMedia returned no image data — try sending it again.");
       const ext = (media.mimetype.split("/")[1] || "jpeg").split(";")[0];
       imagePath = path.join(os.tmpdir(), `wa_image_${Date.now()}.${ext}`);
       fs.writeFileSync(imagePath, Buffer.from(media.data, "base64"));
       prompt = (msg.body || "").trim() || "What's in this image?";
       console.log(`-> received image, caption: ${prompt.slice(0, 80)}`);
     } catch (e) {
-      console.error("image download failed:", e.message);
-      msg.reply(`${BOT_MARK}⚠️ Couldn't download image: ${e.message.slice(0, 200)}`);
+      console.error("image download failed:", e.stack || e);
+      const detail = (e && e.message) || String(e) || "unknown error";
+      await withTimeout(msg.reply(`${BOT_MARK}⚠️ Couldn't download image: ${detail.slice(0, 300)}`), 30_000, "msg.reply").catch((e2) =>
+        console.error("image error reply failed:", e2.message)
+      );
       return;
     }
   } else {
