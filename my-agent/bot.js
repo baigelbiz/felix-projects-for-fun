@@ -185,6 +185,26 @@ client.on("message_create", async (msg) => {
   const isLocation = msg.type === "location";
   if (!isVoice && !isImage && !isLocation && (!msg.body || msg.type !== "chat")) return; // text, voice, image, or location only
 
+  // "@s <note>" = field intel for the social manager (Claude on the Mac).
+  // Logged to .social_inbox/, pulled into the repo by the publisher's daily
+  // run — no agent call, just capture and confirm.
+  if (msg.type === "chat" && /^@s\s+/i.test(msg.body || "")) {
+    const note = msg.body.replace(/^@s\s+/i, "").trim();
+    if (note) {
+      const dir = path.join(__dirname, ".social_inbox");
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, `intel-${Date.now()}.txt`),
+        `${new Date().toISOString()} ${note}\n`);
+      try {
+        const sent = await msg.reply(`${BOT_MARK}📋 Logged for the social manager.`);
+        if (sent?.id?._serialized) sentByBot.add(sent.id._serialized);
+      } catch (e) {
+        console.error("intel ack failed:", e.message);
+      }
+    }
+    return;
+  }
+
   let prompt;
   let imagePath;
   if (isLocation) {
