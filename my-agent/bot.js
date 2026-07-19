@@ -185,6 +185,53 @@ client.on("message_create", async (msg) => {
   const isLocation = msg.type === "location";
   if (!isVoice && !isImage && !isLocation && (!msg.body || msg.type !== "chat")) return; // text, voice, image, or location only
 
+  // "@m status|pause|resume" = Miles the Publisher, deterministic commands.
+  if (msg.type === "chat" && /^@m(iles)?\s+/i.test(msg.body || "")) {
+    const cmd = msg.body.replace(/^@m(iles)?\s+/i, "").trim().toLowerCase();
+    const PUB = "/root/publisher";
+    let reply;
+    try {
+      if (cmd === "pause") {
+        fs.writeFileSync(path.join(PUB, "PAUSED"), new Date().toISOString());
+        reply = "⏸ Publishing paused. Nothing posts until you send '@m resume'.";
+      } else if (cmd === "resume") {
+        fs.rmSync(path.join(PUB, "PAUSED"), { force: true });
+        reply = "▶️ Publishing resumed. Next scheduled post goes out normally.";
+      } else {
+        const sched = JSON.parse(fs.readFileSync(path.join(PUB, "schedule.json"), "utf8"));
+        const paused = fs.existsSync(path.join(PUB, "PAUSED"));
+        const lines = sched.map((p) => {
+          const st = p.posted ? "✅" : "🕘";
+          const plats = (p.platforms || []).join("+");
+          return `${st} ${p.date} ${p.pillar || ""} (${plats})`;
+        });
+        reply = `Miles here${paused ? " — ⏸ PAUSED" : ""}. Schedule:\n` + lines.join("\n");
+      }
+    } catch (e) {
+      reply = `⚠️ Miles hit an error: ${e.message.slice(0, 200)}`;
+    }
+    try {
+      const sent = await msg.reply(BOT_MARK + reply);
+      if (sent?.id?._serialized) sentByBot.add(sent.id._serialized);
+    } catch (e) { console.error("miles reply failed:", e.message); }
+    return;
+  }
+
+  // "@r <request>" = Riley the Content Manager drafting from the server.
+  if (msg.type === "chat" && /^@r(iley)?\s+/i.test(msg.body || "")) {
+    const req = msg.body.replace(/^@r(iley)?\s+/i, "").trim();
+    execFile(PYTHON, ["/root/publisher/riley_reply.py", req],
+      { timeout: 120_000, maxBuffer: 1024 * 1024, cwd: "/root/publisher" },
+      async (err, stdout, stderr) => {
+        const text = err ? `⚠️ Riley errored: ${(stderr || err.message).slice(0, 250)}` : stdout.trim().slice(0, 3800);
+        try {
+          const sent = await msg.reply(BOT_MARK + "✍️ Riley:\n" + text);
+          if (sent?.id?._serialized) sentByBot.add(sent.id._serialized);
+        } catch (e) { console.error("riley reply failed:", e.message); }
+      });
+    return;
+  }
+
   // "@s <note>" = field intel for the social manager (Claude on the Mac).
   // Logged to .social_inbox/, pulled into the repo by the publisher's daily
   // run — no agent call, just capture and confirm.
