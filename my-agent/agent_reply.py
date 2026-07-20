@@ -189,7 +189,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "photos_search",
-            "description": "Search and retrieve a photo from the user's Google Photos library. Returns a photo to send in WhatsApp.",
+            "description": "Attempt to search the user's Google Photos library. Google removed third-party read access to users' full libraries in March 2025, so this will not find anything — when it returns unavailable, tell the user to just forward the photo in WhatsApp instead of retrying.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -607,58 +607,17 @@ def gmail_draft(to: str, subject: str, body: str, account: str = "business") -> 
     return f"Draft created in {account} account (ID: {draft['id']}) — ready to send in Gmail."
 
 
-def _photos_creds():
-    token_path = CREDS_DIR / "photos_token.json"
-    client_path = CREDS_DIR / "gcp-oauth.keys.json"
-    raw = json.loads(token_path.read_text())
-    client = json.loads(client_path.read_text())["installed"]
-    creds = Credentials(
-        token=raw["access_token"],
-        refresh_token=raw["refresh_token"],
-        token_uri="https://oauth2.googleapis.com/token",
-        client_id=client["client_id"],
-        client_secret=client["client_secret"],
-        scopes=raw["scope"].split(),
-    )
-    if creds.expired:
-        creds.refresh(Request())
-        raw["access_token"] = creds.token
-        token_path.write_text(json.dumps(raw))
-    return creds
-
-
 def photos_search(query: str, max_results: int = 1) -> str:
-    creds = _photos_creds()
-    headers = {"Authorization": f"Bearer {creds.token}"}
-
-    # The Photos Library API's mediaItems:search only filters by category/date,
-    # not free-text keywords, so `query` can't be used to filter server-side —
-    # this always returns the most recently added items.
-    search_res = http_requests.post(
-        "https://photoslibrary.googleapis.com/v1/mediaItems:search",
-        headers=headers,
-        json={"pageSize": max_results},
+    # Google removed the photoslibrary.readonly/sharing scopes for third-party apps
+    # on March 31, 2025 (https://developers.google.com/photos/support/updates) — apps
+    # can now only search/list media items the app itself created, never the user's
+    # actual library. mediaItems:search against a user's library now always returns
+    # 403 PERMISSION_DENIED, so there's no working call left to make here.
+    return (
+        "Photo library search is unavailable — Google discontinued third-party access "
+        "to a user's full Photos library. Ask the user to forward the photo directly "
+        "in WhatsApp instead."
     )
-
-    if search_res.status_code != 200:
-        return f"Photos API error: {search_res.text}"
-
-    items = search_res.json().get("mediaItems", [])
-    if not items:
-        return "No photos found."
-
-    # Download the first matching photo to a temp file
-    item = items[0]
-    base_url = item["baseUrl"] + "=d"  # =d means download full size
-    img_data = http_requests.get(base_url).content
-    ext = "jpg"
-    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=f".{ext}", prefix="wa_photo_")
-    tmp.write(img_data)
-    tmp.close()
-
-    description = item.get("description", "")
-    filename = item.get("filename", "photo")
-    return f"PHOTO:{tmp.name}\n{filename}{(' — ' + description) if description else ''}"
 
 
 def generate_image(prompt: str) -> str:
