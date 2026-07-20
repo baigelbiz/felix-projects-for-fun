@@ -319,7 +319,10 @@ client.on("message_create", async (msg) => {
         `detail=${JSON.stringify(detail)}`
       );
       console.error("transcription failed [stack]:", e?.stack || "(no stack — error is not an Error object)");
-      msg.reply(`${BOT_MARK}⚠️ Couldn't transcribe voice note: ${(e?.message || String(e)).slice(0, 200)}`);
+      // Voice-note media download is currently broken by a whatsapp-web.js vs.
+      // WhatsApp Web version drift (downloadMedia throws inside the WA page).
+      // Give the user an actionable message instead of the raw internal error.
+      msg.reply(`${BOT_MARK}🎙️ I couldn't read that voice note — voice transcription is temporarily down. Please type it out and I'll help right away 🙏`);
       return;
     }
   } else if (isImage) {
