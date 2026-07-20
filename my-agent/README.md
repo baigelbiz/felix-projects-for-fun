@@ -32,6 +32,19 @@ The bot sends a 07:00 Israel-time briefing, alerts the WhatsApp owner when it
 restarts or encounters an agent failure, and keeps long-term assistant memory
 in `.assistant_memory.json`.
 
+## Deploying from a Claude Code on the web session
+
+Claude Code on the web sessions **cannot SSH to the production server**: the
+sandbox only permits outbound HTTP/HTTPS through an inspecting proxy (ports
+80/443), and that proxy rejects the SSH protocol — including SSH re-hosted on
+port 443 (it answers `HTTP/1.1 400 Bad Request`). Port 22 is blocked outright.
+So a web session can't reach `root@138.199.159.146` directly, no matter how the
+environment's network access is configured.
+
+Deploy instead from a machine with real SSH access (e.g. Felix's Mac) by
+running `./deploy.sh`, or by pulling on the server itself
+(`cd /root/repo-update/my-agent && git pull && ...`).
+
 ## What's inside
 
 - `main.py` — an agent with a custom `roll_dice` tool (in-process MCP server),
