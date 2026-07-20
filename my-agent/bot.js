@@ -61,12 +61,41 @@ client.on("qr", async (qr) => {
   console.log("QR code written to qr.png — scan from WhatsApp > Settings > Linked Devices");
 });
 
+// A live Chat handle captured from the most recent owner message. Proactive
+// sends (startup alert, morning briefing, watchdog outbox) prefer this because
+// client.sendMessage(bareId, ...) was throwing "Cannot read properties of
+// undefined (reading 'id')" inside wwebjs when resolving a bare id string,
+// whereas sending on an already-resolved Chat works (that's the path msg.reply
+// uses, which is why interactive replies never hit this bug).
+let lastOwnerChat = null;
+
 async function sendProactiveMessage(text) {
-  // Newer WhatsApp Web versions make wwebjs sendMessage resolve undefined even
-  // when the message is delivered — never crash on the missing return value.
-  const sent = await client.sendMessage(ALLOWED_IDS[0], BOT_MARK + text.slice(0, 4000));
-  if (sent?.id?._serialized) sentByBot.add(sent.id._serialized);
-  return sent;
+  const body = BOT_MARK + text.slice(0, 4000);
+
+  // Try delivery paths in order of reliability, first success wins:
+  //   1. the cached live Chat from an incoming owner message
+  //   2. a Chat resolved via getChatById for each allowed id
+  //   3. the raw client.sendMessage(id, ...) (original behaviour) as last resort
+  const attempts = [];
+  if (lastOwnerChat) attempts.push(() => lastOwnerChat.sendMessage(body));
+  for (const id of ALLOWED_IDS) {
+    attempts.push(async () => (await client.getChatById(id)).sendMessage(body));
+  }
+  for (const id of ALLOWED_IDS) {
+    attempts.push(() => client.sendMessage(id, body));
+  }
+
+  let lastErr;
+  for (const attempt of attempts) {
+    try {
+      const sent = await attempt();
+      if (sent?.id?._serialized) sentByBot.add(sent.id._serialized);
+      return sent;
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw lastErr || new Error("sendProactiveMessage: all delivery attempts failed");
 }
 
 function saveBotState() {
@@ -147,6 +176,9 @@ setInterval(async () => {
 
 async function transcribeVoiceNote(msg) {
   const media = await msg.downloadMedia();
+  if (!media || !media.data) {
+    throw new Error("voice note media could not be downloaded (empty response from WhatsApp)");
+  }
   const tmpFile = path.join(os.tmpdir(), `wa_voice_${Date.now()}.ogg`);
   fs.writeFileSync(tmpFile, Buffer.from(media.data, "base64"));
   try {
@@ -180,6 +212,10 @@ client.on("message_create", async (msg) => {
   if (!ALLOWED_IDS.includes(msg.from)) return;
   // Never answer our own replies (loop protection)
   if (sentByBot.has(msg.id?._serialized) || (msg.body || "").startsWith(BOT_MARK)) return;
+
+  // Capture a live Chat handle for proactive sends (briefing, alerts, outbox).
+  // This is what makes those delivery paths work — see sendProactiveMessage.
+  msg.getChat().then((c) => { lastOwnerChat = c; }).catch(() => {});
   const isVoice = msg.type === "ptt" || msg.type === "audio";
   const isImage = msg.type === "image";
   const isLocation = msg.type === "location";
@@ -266,8 +302,20 @@ client.on("message_create", async (msg) => {
       prompt = `[Voice note]: ${transcript}`;
       console.log(`-> transcribed: ${transcript.slice(0, 80)}`);
     } catch (e) {
-      console.error("transcription failed:", e.message);
-      msg.reply(`${BOT_MARK}⚠️ Couldn't transcribe voice note: ${e.message.slice(0, 200)}`);
+      // The previous "transcription failed: <message>" logged too little to
+      // diagnose (an OpenAI SDK error's .message can be a single char). Surface
+      // the HTTP status, code, type, and any API error payload so the real
+      // cause (bad key, quota, unsupported model/format, network) is visible.
+      const detail = e?.error || e?.response?.data || {};
+      console.error(
+        "transcription failed:",
+        `status=${e?.status ?? ""}`,
+        `code=${e?.code ?? ""}`,
+        `type=${e?.type ?? ""}`,
+        `message=${e?.message ?? String(e)}`,
+        `detail=${JSON.stringify(detail)}`
+      );
+      msg.reply(`${BOT_MARK}⚠️ Couldn't transcribe voice note: ${(e?.message || String(e)).slice(0, 200)}`);
       return;
     }
   } else if (isImage) {
