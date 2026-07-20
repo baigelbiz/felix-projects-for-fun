@@ -37,15 +37,24 @@ in `.assistant_memory.json`.
 `.claude/hooks/session-start.sh` can hydrate SSH access to the deploy target
 (`root@138.199.159.146`, see `deploy.sh`) at the start of every Claude Code
 session, so sessions can check on / restart / debug the live bot directly.
-It's a no-op unless both of these are set up on the environment (neither can
-be done from inside a session — they're environment-level config):
+It's a no-op unless both of these are set up on the environment — neither can
+be done from inside a session, both are environment-level config on
+claude.ai/code (cloud icon → hover the environment → settings icon):
 
-1. **Network policy** must allow outbound TCP to `138.199.159.146` on port 22.
-   By default, Claude Code on the web sessions only get HTTPS-proxy egress.
-2. **Secret `WHATSAPP_BOT_SSH_KEY`** — an ed25519 private key (PEM text) whose
-   matching public key is already appended to `root@138.199.159.146`'s
-   `~/.ssh/authorized_keys`. Add the secret in the environment's settings on
-   claude.ai/code.
+1. **Network access**: set to **Custom** and add `138.199.159.146` to
+   **Allowed domains**. By default sessions only get **Trusted** access
+   (package registries, GitHub, etc.) — this host isn't on that list.
+   Note the proxy is HTTP/HTTPS-based; whether it actually tunnels raw SSH
+   (port 22) to a custom entry isn't guaranteed by the docs and needs to be
+   verified once it's set.
+2. **Environment variable `WHATSAPP_BOT_SSH_KEY`** — there's no dedicated
+   secrets store; environment variables are stored as plain `.env`-format
+   text (one `KEY=value` per line) in the environment config, visible to
+   anyone who can edit that environment. Because a private key is normally
+   multi-line, store it **base64-encoded onto a single line**:
+   `base64 -w0 id_ed25519`. The hook decodes it back into a real key file.
+   The matching public key must already be in `root@138.199.159.146`'s
+   `~/.ssh/authorized_keys`.
 
 Once both are set, a session can run `ssh whatsapp-bot` directly. Consider
 scoping the key server-side (e.g. a non-root deploy user, or a

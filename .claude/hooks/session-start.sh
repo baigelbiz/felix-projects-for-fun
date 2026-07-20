@@ -6,9 +6,12 @@
 # Requires two things configured outside this script, on the environment
 # itself (see my-agent/README.md "SSH access" section):
 #   1. Network policy must allow egress to WHATSAPP_BOT_SSH_HOST on port 22.
-#   2. An environment secret WHATSAPP_BOT_SSH_KEY holding the private key
-#      (ed25519, PEM text) whose matching public key is already in
-#      root@<host>'s ~/.ssh/authorized_keys.
+#   2. An environment variable WHATSAPP_BOT_SSH_KEY holding the private key
+#      (ed25519), base64-encoded onto a single line — Claude Code's cloud
+#      environment variables are .env-format, one KEY=value per line, so a
+#      raw multi-line PEM key can't be stored directly. The matching public
+#      key must already be in root@<host>'s ~/.ssh/authorized_keys.
+#      Generate the single-line value with: base64 -w0 id_ed25519
 #
 # Safe to run multiple times; a no-op if the secret isn't configured.
 set -euo pipefail
@@ -30,7 +33,10 @@ fi
 mkdir -p ~/.ssh
 chmod 700 ~/.ssh
 
-printf '%s\n' "$WHATSAPP_BOT_SSH_KEY" > ~/.ssh/whatsapp_bot_deploy
+if ! base64 -d <<< "$WHATSAPP_BOT_SSH_KEY" > ~/.ssh/whatsapp_bot_deploy 2>/dev/null; then
+  echo "WHATSAPP_BOT_SSH_KEY is set but isn't valid base64 — SSH access not configured." >&2
+  exit 0
+fi
 chmod 600 ~/.ssh/whatsapp_bot_deploy
 
 # accept-new pins the host key on first connect instead of prompting —
