@@ -179,9 +179,11 @@ async function transcribeVoiceNote(msg) {
   if (!media || !media.data) {
     throw new Error("voice note media could not be downloaded (empty response from WhatsApp)");
   }
+  console.log(`-> voice media downloaded: ${media.data.length} b64 chars, mimetype=${media.mimetype || "(none)"}`);
   const tmpFile = path.join(os.tmpdir(), `wa_voice_${Date.now()}.ogg`);
   fs.writeFileSync(tmpFile, Buffer.from(media.data, "base64"));
   try {
+    console.log("-> calling OpenAI whisper...");
     const transcript = await openai.audio.transcriptions.create({
       file: fs.createReadStream(tmpFile),
       model: "whisper-1",
@@ -312,9 +314,11 @@ client.on("message_create", async (msg) => {
         `status=${e?.status ?? ""}`,
         `code=${e?.code ?? ""}`,
         `type=${e?.type ?? ""}`,
+        `ctor=${e?.constructor?.name ?? typeof e}`,
         `message=${e?.message ?? String(e)}`,
         `detail=${JSON.stringify(detail)}`
       );
+      console.error("transcription failed [stack]:", e?.stack || "(no stack — error is not an Error object)");
       msg.reply(`${BOT_MARK}⚠️ Couldn't transcribe voice note: ${(e?.message || String(e)).slice(0, 200)}`);
       return;
     }
