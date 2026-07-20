@@ -32,35 +32,18 @@ The bot sends a 07:00 Israel-time briefing, alerts the WhatsApp owner when it
 restarts or encounters an agent failure, and keeps long-term assistant memory
 in `.assistant_memory.json`.
 
-## SSH access to the production server (for Claude Code sessions)
+## Deploying from a Claude Code on the web session
 
-`.claude/hooks/session-start.sh` can hydrate SSH access to the deploy target
-(`root@138.199.159.146`, see `deploy.sh`) at the start of every Claude Code
-session, so sessions can check on / restart / debug the live bot directly.
-It's a no-op unless both of these are set up on the environment — neither can
-be done from inside a session, both are environment-level config on
-claude.ai/code (cloud icon → hover the environment → settings icon):
+Claude Code on the web sessions **cannot SSH to the production server**: the
+sandbox only permits outbound HTTP/HTTPS through an inspecting proxy (ports
+80/443), and that proxy rejects the SSH protocol — including SSH re-hosted on
+port 443 (it answers `HTTP/1.1 400 Bad Request`). Port 22 is blocked outright.
+So a web session can't reach `root@138.199.159.146` directly, no matter how the
+environment's network access is configured.
 
-1. **Network access**: set to **Custom** and add `138.199.159.146` to
-   **Allowed domains**. By default sessions only get **Trusted** access
-   (package registries, GitHub, etc.) — this host isn't on that list.
-   Note the proxy is HTTP/HTTPS-based; whether it actually tunnels raw SSH
-   (port 22) to a custom entry isn't guaranteed by the docs and needs to be
-   verified once it's set.
-2. **Environment variable `WHATSAPP_BOT_SSH_KEY`** — there's no dedicated
-   secrets store; environment variables are stored as plain `.env`-format
-   text (one `KEY=value` per line) in the environment config, visible to
-   anyone who can edit that environment. Because a private key is normally
-   multi-line, store it **base64-encoded onto a single line**:
-   `base64 -w0 id_ed25519`. The hook decodes it back into a real key file.
-   The matching public key must already be in `root@138.199.159.146`'s
-   `~/.ssh/authorized_keys`.
-
-Once both are set, a session can run `ssh whatsapp-bot` directly. Consider
-scoping the key server-side (e.g. a non-root deploy user, or a
-`command=`-restricted `authorized_keys` entry) rather than granting full root
-— an autonomous session with standing production SSH access is a real
-increase in blast radius.
+Deploy instead from a machine with real SSH access (e.g. Felix's Mac) by
+running `./deploy.sh`, or by pulling on the server itself
+(`cd /root/repo-update/my-agent && git pull && ...`).
 
 ## What's inside
 
