@@ -328,14 +328,29 @@ client.on("message_create", async (msg) => {
   } else if (isImage) {
     try {
       const media = await msg.downloadMedia();
+      if (!media || !media.data) {
+        throw new Error("image media could not be downloaded (empty response from WhatsApp)");
+      }
       const ext = (media.mimetype.split("/")[1] || "jpeg").split(";")[0];
       imagePath = path.join(os.tmpdir(), `wa_image_${Date.now()}.${ext}`);
       fs.writeFileSync(imagePath, Buffer.from(media.data, "base64"));
       prompt = (msg.body || "").trim() || "What's in this image?";
       console.log(`-> received image, caption: ${prompt.slice(0, 80)}`);
     } catch (e) {
-      console.error("image download failed:", e.message);
-      msg.reply(`${BOT_MARK}⚠️ Couldn't download image: ${e.message.slice(0, 200)}`);
+      // Same root cause as the voice-note failure above: a whatsapp-web.js vs.
+      // WhatsApp Web version drift makes downloadMedia() throw an opaque error
+      // for all incoming media, not just audio. Log full diagnostics (a raw
+      // .message can be a single opaque character, e.g. "r") and give the user
+      // an actionable message instead of echoing that back.
+      console.error(
+        "image download failed:",
+        `status=${e?.status ?? ""}`,
+        `code=${e?.code ?? ""}`,
+        `ctor=${e?.constructor?.name ?? typeof e}`,
+        `message=${e?.message ?? String(e)}`
+      );
+      console.error("image download failed [stack]:", e?.stack || "(no stack — error is not an Error object)");
+      msg.reply(`${BOT_MARK}📷 I couldn't read that image — photo downloads are temporarily down. Please describe it in text (or type out the receipt details) and I'll help right away 🙏`);
       return;
     }
   } else {
