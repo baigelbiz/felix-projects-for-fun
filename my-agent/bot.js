@@ -337,7 +337,12 @@ client.on("message_create", async (msg) => {
       // Voice-note media download is currently broken by a whatsapp-web.js vs.
       // WhatsApp Web version drift (downloadMedia throws inside the WA page).
       // Give the user an actionable message instead of the raw internal error.
-      msg.reply(`${BOT_MARK}🎙️ I couldn't read that voice note — voice transcription is temporarily down. Please type it out and I'll help right away 🙏`);
+      try {
+        const sent = await msg.reply(`${BOT_MARK}🎙️ I couldn't read that voice note — voice transcription is temporarily down. Please type it out and I'll help right away 🙏`);
+        if (sent?.id?._serialized) sentByBot.add(sent.id._serialized);
+      } catch (e) {
+        console.error("voice-note error reply failed:", e.message);
+      }
       return;
     }
   } else if (isImage) {
@@ -365,7 +370,12 @@ client.on("message_create", async (msg) => {
         `message=${e?.message ?? String(e)}`
       );
       console.error("image download failed [stack]:", e?.stack || "(no stack — error is not an Error object)");
-      msg.reply(`${BOT_MARK}📷 I couldn't read that image — photo downloads are temporarily down. Please describe it in text (or type out the receipt details) and I'll help right away 🙏`);
+      try {
+        const sent = await msg.reply(`${BOT_MARK}📷 I couldn't read that image — photo downloads are temporarily down. Please describe it in text (or type out the receipt details) and I'll help right away 🙏`);
+        if (sent?.id?._serialized) sentByBot.add(sent.id._serialized);
+      } catch (e2) {
+        console.error("image error reply failed:", e2.message);
+      }
       return;
     }
   } else {
