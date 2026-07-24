@@ -69,6 +69,21 @@ client.on("qr", async (qr) => {
 // uses, which is why interactive replies never hit this bug).
 let lastOwnerChat = null;
 
+// whatsapp-web.js sends go through Puppeteer and can hang indefinitely (dead
+// page, lost devtools connection) instead of ever resolving or rejecting.
+// processQueue's agentBusy mutex only resets after its send finishes, so an
+// unbounded hang there wedges the message queue forever — the Node process
+// itself never crashes, so pm2 still reports "online" and the cron watchdog
+// (check-bot.sh) never restarts it, leaving the bot silently unresponsive.
+// Race every send against a timeout so it always settles one way or another.
+function withTimeout(promise, ms, label) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
 async function sendProactiveMessage(text) {
   const body = BOT_MARK + text.slice(0, 4000);
 
@@ -88,7 +103,7 @@ async function sendProactiveMessage(text) {
   let lastErr;
   for (const attempt of attempts) {
     try {
-      const sent = await attempt();
+      const sent = await withTimeout(attempt(), 30_000, "sendProactiveMessage attempt");
       if (sent?.id?._serialized) sentByBot.add(sent.id._serialized);
       return sent;
     } catch (e) {
@@ -333,15 +348,30 @@ client.on("message_create", async (msg) => {
   } else if (isImage) {
     try {
       const media = await msg.downloadMedia();
+      if (!media || !media.data) {
+        throw new Error("image media could not be downloaded (empty response from WhatsApp)");
+      }
       const ext = (media.mimetype.split("/")[1] || "jpeg").split(";")[0];
       imagePath = path.join(os.tmpdir(), `wa_image_${Date.now()}.${ext}`);
       fs.writeFileSync(imagePath, Buffer.from(media.data, "base64"));
       prompt = (msg.body || "").trim() || "What's in this image?";
       console.log(`-> received image, caption: ${prompt.slice(0, 80)}`);
     } catch (e) {
-      console.error("image download failed:", e.message);
+      // Same root cause as the voice-note failure above: a whatsapp-web.js vs.
+      // WhatsApp Web version drift makes downloadMedia() throw an opaque error
+      // for all incoming media, not just audio. Log full diagnostics (a raw
+      // .message can be a single opaque character, e.g. "r") and give the user
+      // an actionable message instead of echoing that back.
+      console.error(
+        "image download failed:",
+        `status=${e?.status ?? ""}`,
+        `code=${e?.code ?? ""}`,
+        `ctor=${e?.constructor?.name ?? typeof e}`,
+        `message=${e?.message ?? String(e)}`
+      );
+      console.error("image download failed [stack]:", e?.stack || "(no stack — error is not an Error object)");
       try {
-        const sent = await msg.reply(`${BOT_MARK}⚠️ Couldn't download image: ${e.message.slice(0, 200)}`);
+        const sent = await msg.reply(`${BOT_MARK}📷 I couldn't read that image — photo downloads are temporarily down. Please describe it in text (or type out the receipt details) and I'll help right away 🙏`);
         if (sent?.id?._serialized) sentByBot.add(sent.id._serialized);
       } catch (e2) {
         console.error("image error reply failed:", e2.message);
@@ -376,8 +406,12 @@ function processQueue() {
             console.error("morning briefing failed:", (stderr || err.message).trim());
             await sendProactiveMessage(`⚠️ Morning briefing failed: ${(stderr || err.message).slice(0, 300)}`).catch(() => {});
           } else {
-            await sendProactiveMessage("Good morning.\n\n" + stdout.trim());
-            console.log("-> morning briefing sent");
+            try {
+              await sendProactiveMessage("Good morning.\n\n" + stdout.trim());
+              console.log("-> morning briefing sent");
+            } catch (e) {
+              console.error("morning briefing send failed:", e.message);
+            }
           }
         } finally {
           agentBusy = false;
@@ -403,12 +437,16 @@ function processQueue() {
           const photoPath = lines[0].replace("PHOTO:", "").trim();
           const caption = lines.slice(1).join("\n").trim();
           const media = MessageMedia.fromFilePath(photoPath);
-          const chat = await msg.getChat();
-          const sent = await chat.sendMessage(media, { caption: BOT_MARK + (caption || "") });
+          const chat = await withTimeout(msg.getChat(), 30_000, "msg.getChat");
+          const sent = await withTimeout(
+            chat.sendMessage(media, { caption: BOT_MARK + (caption || "") }),
+            30_000,
+            "chat.sendMessage"
+          );
           if (sent?.id?._serialized) sentByBot.add(sent.id._serialized);
           fs.unlinkSync(photoPath);
         } else {
-          const sent = await msg.reply(BOT_MARK + raw.slice(0, 4000));
+          const sent = await withTimeout(msg.reply(BOT_MARK + raw.slice(0, 4000)), 30_000, "msg.reply");
           if (sent?.id?._serialized) sentByBot.add(sent.id._serialized);
         }
       } catch (e) {
