@@ -93,6 +93,12 @@ async function sendProactiveMessage(text) {
   //   3. the raw client.sendMessage(id, ...) (original behaviour) as last resort
   const attempts = [];
   if (lastOwnerChat) attempts.push(() => lastOwnerChat.sendMessage(body));
+  // Always deliver to the LINKED account's own "Message yourself" chat, whatever
+  // number scanned the QR. Fixes proactive messages vanishing when the linked
+  // number differs from the hardcoded ALLOWED_IDS (they'd send to a contact the
+  // owner isn't viewing). This is the same chat the owner types "@a" into.
+  const selfId = client.info?.wid?._serialized;
+  if (selfId) attempts.push(() => client.sendMessage(selfId, body));
   for (const id of ALLOWED_IDS) {
     attempts.push(async () => (await client.getChatById(id)).sendMessage(body));
   }
@@ -154,6 +160,7 @@ function scheduleMorningBriefing() {
 client.on("ready", async () => {
   clientReady = true;
   console.log("READY: WhatsApp bridge is live. Message yourself starting with '@a '.");
+  console.log("LINKED AS:", client.info?.wid?._serialized || "(wid unknown)");
   if (process.env.BOT_SEND_STARTUP_ALERT !== "false") {
     await sendProactiveMessage(`✅ WhatsApp assistant is online (${new Date().toLocaleString("en-IL", { timeZone: "Asia/Jerusalem" })}).`).catch((e) => console.error("startup alert failed:", e.message));
   }
