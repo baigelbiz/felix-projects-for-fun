@@ -717,7 +717,7 @@ def _parse_reminder_when(when: str, tz_name: str = "Asia/Jerusalem") -> datetime
 
     number_pattern = r"(\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|אחת|אחד|שתיים|שתי|שניים|שלוש|ארבע|חמש|שש|שבע|שמונה|תשע|עשר)"
     relative = re.search(
-        rf"(?:in|בעוד)\s+{number_pattern}\s*(minute|minutes|min|hour|hours|day|days|דקה|דקות|שעה|שעות|יום|ימים)",
+        rf"(?:in|בעוד)\s+{number_pattern}\s*(minute|minutes|min|hour|hours|day|days|week|weeks|דקה|דקות|שעה|שעות|יום|ימים|שבוע|שבועות)",
         lowered,
     )
     if relative:
@@ -727,6 +727,8 @@ def _parse_reminder_when(when: str, tz_name: str = "Asia/Jerusalem") -> datetime
             return now + timedelta(minutes=amount)
         if unit in {"hour", "hours", "שעה", "שעות"}:
             return now + timedelta(hours=amount)
+        if unit in {"week", "weeks", "שבוע", "שבועות"}:
+            return now + timedelta(weeks=amount)
         return now + timedelta(days=amount)
 
     date_base = now
