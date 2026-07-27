@@ -717,7 +717,7 @@ def _parse_reminder_when(when: str, tz_name: str = "Asia/Jerusalem") -> datetime
 
     number_pattern = r"(\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|אחת|אחד|שתיים|שתי|שניים|שלוש|ארבע|חמש|שש|שבע|שמונה|תשע|עשר)"
     relative = re.search(
-        rf"(?:in|בעוד)\s+{number_pattern}\s*(minute|minutes|min|hour|hours|day|days|דקה|דקות|שעה|שעות|יום|ימים)",
+        rf"(?:in|בעוד)\s+{number_pattern}\s*(minute|minutes|min|hour|hours|day|days|week|weeks|דקה|דקות|שעה|שעות|יום|ימים|שבוע|שבועות)",
         lowered,
     )
     if relative:
@@ -727,7 +727,24 @@ def _parse_reminder_when(when: str, tz_name: str = "Asia/Jerusalem") -> datetime
             return now + timedelta(minutes=amount)
         if unit in {"hour", "hours", "שעה", "שעות"}:
             return now + timedelta(hours=amount)
-        return now + timedelta(days=amount)
+        if unit in {"week", "weeks", "שבוע", "שבועות"}:
+            date_base = now + timedelta(weeks=amount)
+        else:
+            date_base = now + timedelta(days=amount)
+        # A trailing clock time ("in 2 days at 5pm") would otherwise be silently
+        # dropped by returning immediately here, leaving the reminder at today's
+        # current clock time N days/weeks out instead of the requested hour.
+        time_match = re.search(r"(?:at|ב|בשעה)\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?", lowered[relative.end():])
+        if time_match:
+            hour = int(time_match.group(1))
+            minute = int(time_match.group(2) or 0)
+            meridiem = time_match.group(3)
+            if meridiem == "pm" and hour != 12:
+                hour += 12
+            elif meridiem == "am" and hour == 12:
+                hour = 0
+            return date_base.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        return date_base
 
     date_base = now
     if "tomorrow" in lowered or "מחר" in lowered:
@@ -1186,9 +1203,13 @@ def run(prompt: str, history: list, image_path: str = None) -> tuple[str, list]:
     global _current_image_path
     _current_image_path = image_path
     client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
-    contents = _build_contents(history, prompt, image_path)
 
     try:
+        # Building contents can fail on its own (e.g. an unreadable/truncated
+        # image temp file) — keep it inside the try so that raises a friendly
+        # reply instead of an uncaught exception crashing agent_reply.py before
+        # anything is printed to stdout.
+        contents = _build_contents(history, prompt, image_path)
         for _ in range(10):  # max tool call rounds
             response = _generate_with_retry(
                 client,
@@ -1214,9 +1235,23 @@ def run(prompt: str, history: list, image_path: str = None) -> tuple[str, list]:
                     # model paraphrase the PHOTO: marker into prose. Still run every tool call the
                     # model requested this round (and give each a function response) before
                     # returning, so a photo result never causes other requested calls to be skipped.
-                    if result.startswith("PHOTO:") and photo_result is None:
-                        photo_result = result
-                        response_data = {"result": "Photo sent to user."}
+                    if result.startswith("PHOTO:"):
+                        if photo_result is None:
+                            photo_result = result
+                            response_data = {"result": "Photo sent to user."}
+                        else:
+                            # Only one PHOTO: result can be delivered per reply (bot.js's
+                            # protocol sends a single image back). A second image/GIF tool
+                            # call in the same round would otherwise leak its temp file
+                            # (bot.js only unlinks the one path it receives) and feed the
+                            # raw "PHOTO:<tmp-path>" marker back into the conversation as
+                            # if it were plain text. Clean up and tell the model plainly.
+                            extra_path = result.split("\n", 1)[0].removeprefix("PHOTO:")
+                            try:
+                                os.unlink(extra_path)
+                            except OSError:
+                                pass
+                            response_data = {"result": "Not sent — only one photo can be sent per reply."}
                     else:
                         response_data = {"result": result}
                     # Gemini requires Content.role to be "user" or "model" — "tool" is
