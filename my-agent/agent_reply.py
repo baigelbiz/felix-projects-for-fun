@@ -640,6 +640,7 @@ def gif_search(query: str) -> str:
     res = http_requests.get(
         "https://api.giphy.com/v1/gifs/search",
         params={"api_key": os.environ["GIPHY_API_KEY"], "q": query, "limit": 1, "rating": "pg-13"},
+        timeout=15,
     )
     if res.status_code != 200:
         return f"GIF search error: {res.text[:300]}"
@@ -649,7 +650,7 @@ def gif_search(query: str) -> str:
         return f"No GIF found for '{query}'."
 
     gif_url = data[0]["images"]["original"]["url"]
-    img_data = http_requests.get(gif_url).content
+    img_data = http_requests.get(gif_url, timeout=15).content
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".gif", prefix="wa_gif_")
     tmp.write(img_data)
     tmp.close()
@@ -733,7 +734,16 @@ def _parse_reminder_when(when: str, tz_name: str = "Asia/Jerusalem") -> datetime
     if "tomorrow" in lowered or "מחר" in lowered:
         date_base = now + timedelta(days=1)
 
-    time_match = re.search(r"(?:at|ב|בשעה)?\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?", lowered)
+    # The keyword prefix must actually be present (or the number must carry its
+    # own unambiguous time marker: am/pm or a colon) — otherwise this matches
+    # the first stray 1-2 digit number anywhere in the text (e.g. "apartment
+    # 4B") and silently creates a reminder at the wrong time instead of either
+    # parsing correctly or raising below.
+    time_match = (
+        re.search(r"(?:at|ב|בשעה)\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?", lowered)
+        or re.search(r"(\d{1,2})(?::(\d{2}))?\s*(am|pm)", lowered)
+        or re.search(r"(\d{1,2}):(\d{2})\s*(am|pm)?", lowered)
+    )
     if time_match:
         hour = int(time_match.group(1))
         minute = int(time_match.group(2) or 0)
@@ -867,6 +877,7 @@ def close_search_leads(query: str, max_results: int = 5) -> str:
         "https://api.close.com/api/v1/lead/",
         auth=(api_key, ""),
         params={"query": query, "_limit": max_results},
+        timeout=15,
     )
     if res.status_code != 200:
         return f"Close API error: {res.text[:300]}"
@@ -999,6 +1010,7 @@ def web_search(query: str, max_results: int = 5) -> str:
         "https://api.search.brave.com/res/v1/web/search",
         headers={"X-Subscription-Token": os.environ["BRAVE_API_KEY"], "Accept": "application/json"},
         params={"q": query, "count": max_results},
+        timeout=15,
     )
     if res.status_code != 200:
         return f"Search error: {res.text[:300]}"
@@ -1017,6 +1029,7 @@ def reverse_geocode(latitude: float, longitude: float) -> str:
     res = http_requests.get(
         "https://maps.googleapis.com/maps/api/geocode/json",
         params={"latlng": f"{latitude},{longitude}", "key": os.environ["GOOGLE_MAPS_API_KEY"]},
+        timeout=15,
     )
     if res.status_code != 200:
         return f"Geocoding error: {res.text[:300]}"
@@ -1185,10 +1198,10 @@ def _generate_with_retry(client, **kwargs):
 def run(prompt: str, history: list, image_path: str = None) -> tuple[str, list]:
     global _current_image_path
     _current_image_path = image_path
-    client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
-    contents = _build_contents(history, prompt, image_path)
 
     try:
+        client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+        contents = _build_contents(history, prompt, image_path)
         for _ in range(10):  # max tool call rounds
             response = _generate_with_retry(
                 client,
@@ -1217,6 +1230,17 @@ def run(prompt: str, history: list, image_path: str = None) -> tuple[str, list]:
                     if result.startswith("PHOTO:") and photo_result is None:
                         photo_result = result
                         response_data = {"result": "Photo sent to user."}
+                    elif result.startswith("PHOTO:"):
+                        # Only one photo/GIF can be sent per turn (bot.js expects a single
+                        # PHOTO: marker). Without this, a second photo-producing call in the
+                        # same round would leak its temp file on disk forever and leak the raw
+                        # /tmp path into the model's context via response_data.
+                        extra_path = result.split("\n", 1)[0].removeprefix("PHOTO:").strip()
+                        try:
+                            os.unlink(extra_path)
+                        except OSError:
+                            pass
+                        response_data = {"result": "Error: only one photo/GIF can be sent per turn; this one was discarded."}
                     else:
                         response_data = {"result": result}
                     # Gemini requires Content.role to be "user" or "model" — "tool" is

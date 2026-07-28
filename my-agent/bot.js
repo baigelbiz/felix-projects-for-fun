@@ -414,7 +414,18 @@ function processQueue() {
             await sendProactiveMessage(`⚠️ Morning briefing failed: ${(stderr || err.message).slice(0, 300)}`).catch(() => {});
           } else {
             try {
-              await sendProactiveMessage("Good morning.\n\n" + stdout.trim());
+              let body = stdout.trim();
+              // sendProactiveMessage only sends text — a PHOTO: marker (the briefing
+              // prompt shouldn't trigger one, but nothing stops the model from calling
+              // generate_image/gif_search) would otherwise be relayed verbatim as a raw
+              // /tmp path, and its file would never get cleaned up.
+              if (body.startsWith("PHOTO:")) {
+                const lines = body.split("\n");
+                const photoPath = lines[0].replace("PHOTO:", "").trim();
+                fs.unlink(photoPath, () => {});
+                body = lines.slice(1).join("\n").trim() || "(generated an image, but briefings are text-only — ask me directly to see it)";
+              }
+              await sendProactiveMessage("Good morning.\n\n" + body);
               console.log("-> morning briefing sent");
             } catch (e) {
               console.error("morning briefing send failed:", e.message);
@@ -443,15 +454,21 @@ function processQueue() {
           const lines = raw.split("\n");
           const photoPath = lines[0].replace("PHOTO:", "").trim();
           const caption = lines.slice(1).join("\n").trim();
-          const media = MessageMedia.fromFilePath(photoPath);
-          const chat = await withTimeout(msg.getChat(), 30_000, "msg.getChat");
-          const sent = await withTimeout(
-            chat.sendMessage(media, { caption: BOT_MARK + (caption || "") }),
-            30_000,
-            "chat.sendMessage"
-          );
-          if (sent?.id?._serialized) sentByBot.add(sent.id._serialized);
-          fs.unlinkSync(photoPath);
+          try {
+            const media = MessageMedia.fromFilePath(photoPath);
+            const chat = await withTimeout(msg.getChat(), 30_000, "msg.getChat");
+            const sent = await withTimeout(
+              chat.sendMessage(media, { caption: BOT_MARK + (caption || "") }),
+              30_000,
+              "chat.sendMessage"
+            );
+            if (sent?.id?._serialized) sentByBot.add(sent.id._serialized);
+          } finally {
+            // Delete regardless of whether the send above succeeded — a hung/failed
+            // sendMessage (the exact "Puppeteer send hangs" case this file already
+            // guards against with withTimeout) used to leave this file on disk forever.
+            fs.unlink(photoPath, () => {});
+          }
         } else {
           const sent = await withTimeout(msg.reply(BOT_MARK + raw.slice(0, 4000)), 30_000, "msg.reply");
           if (sent?.id?._serialized) sentByBot.add(sent.id._serialized);
