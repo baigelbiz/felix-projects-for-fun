@@ -516,10 +516,15 @@ def _gmail_creds(account: str = "business"):
         client_secret=client["client_secret"],
         scopes=raw["scope"].split(),
     )
-    if creds.expired:
-        creds.refresh(Request())
-        raw["access_token"] = creds.token
-        token_path.write_text(json.dumps(raw))
+    # These Credentials are built from a stored access_token with no `expiry`
+    # set, and google-auth's `expired` property is unconditionally False when
+    # expiry is None — so this check (and the API client's own automatic
+    # before-request refresh, which relies on the same property) never fires.
+    # The token then silently goes stale after ~1h and every call 401s
+    # forever. Refresh unconditionally instead of gating on `.expired`.
+    creds.refresh(Request())
+    raw["access_token"] = creds.token
+    token_path.write_text(json.dumps(raw))
     return creds
 
 
@@ -543,15 +548,17 @@ def _gcal_creds(account: str = "business"):
         client_secret=client["client_secret"],
         scopes=raw["scope"].split(),
     )
-    if creds.expired:
-        creds.refresh(Request())
-        raw["access_token"] = creds.token
-        if wrapped:
-            existing = json.loads(token_path.read_text())
-            existing["normal"] = raw
-            token_path.write_text(json.dumps(existing))
-        else:
-            token_path.write_text(json.dumps(raw))
+    # See _gmail_creds: without `expiry` set, google-auth's `.expired` is
+    # always False, so this refresh never fired and the token went stale
+    # after ~1h. Refresh unconditionally instead of gating on `.expired`.
+    creds.refresh(Request())
+    raw["access_token"] = creds.token
+    if wrapped:
+        existing = json.loads(token_path.read_text())
+        existing["normal"] = raw
+        token_path.write_text(json.dumps(existing))
+    else:
+        token_path.write_text(json.dumps(raw))
     return creds
 
 
@@ -1041,10 +1048,12 @@ def _sheets_drive_creds():
         client_secret=client["client_secret"],
         scopes=raw["scope"].split(),
     )
-    if creds.expired:
-        creds.refresh(Request())
-        raw["access_token"] = creds.token
-        token_path.write_text(json.dumps(raw))
+    # See _gmail_creds: without `expiry` set, google-auth's `.expired` is
+    # always False, so this refresh never fired and the token went stale
+    # after ~1h. Refresh unconditionally instead of gating on `.expired`.
+    creds.refresh(Request())
+    raw["access_token"] = creds.token
+    token_path.write_text(json.dumps(raw))
     return creds
 
 
