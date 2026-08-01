@@ -17,6 +17,7 @@ from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from pathlib import Path
 
+from dotenv import load_dotenv
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
@@ -24,6 +25,16 @@ from google import genai
 from google.genai import errors as genai_errors
 from google.genai import types as genai_types
 from openai import OpenAI  # still used for generate_image (gpt-image-1); the chat/tool-calling model is Gemini
+
+# bot.js loads .env itself and this module normally only runs as its child
+# (inheriting that environment), but deploy.sh's smoke_test.py invokes this
+# module directly over a non-interactive SSH command whose shell never
+# sources .env — GEMINI_API_KEY etc. were silently absent there, so the
+# deploy's pre-flight smoke test always printed "SKIP" and validated
+# nothing. load_dotenv() never overrides a var that's already set, so this
+# is a no-op under bot.js and only fills the gap for standalone invocations.
+load_dotenv(Path(__file__).parent / ".env")
+
 
 def _atomic_write_text(path: Path, text: str) -> None:
     """Write via a temp file + rename so a crash/kill mid-write (pm2 restarts are
