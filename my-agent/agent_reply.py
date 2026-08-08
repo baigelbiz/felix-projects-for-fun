@@ -17,6 +17,7 @@ from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from pathlib import Path
 
+from dotenv import load_dotenv
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
@@ -24,6 +25,16 @@ from google import genai
 from google.genai import errors as genai_errors
 from google.genai import types as genai_types
 from openai import OpenAI  # still used for generate_image (gpt-image-1); the chat/tool-calling model is Gemini
+
+# bot.js loads .env itself and this module normally only runs as its child
+# (inheriting that environment), but deploy.sh's smoke_test.py invokes this
+# module directly over a non-interactive SSH command whose shell never
+# sources .env — GEMINI_API_KEY etc. were silently absent there, so the
+# deploy's pre-flight smoke test always printed "SKIP" and validated
+# nothing. load_dotenv() never overrides a var that's already set, so this
+# is a no-op under bot.js and only fills the gap for standalone invocations.
+load_dotenv(Path(__file__).parent / ".env")
+
 
 def _atomic_write_text(path: Path, text: str) -> None:
     """Write via a temp file + rename so a crash/kill mid-write (pm2 restarts are
@@ -516,10 +527,15 @@ def _gmail_creds(account: str = "business"):
         client_secret=client["client_secret"],
         scopes=raw["scope"].split(),
     )
-    if creds.expired:
-        creds.refresh(Request())
-        raw["access_token"] = creds.token
-        token_path.write_text(json.dumps(raw))
+    # This Credentials object is built from a stored access_token with no
+    # `expiry` set, and google-auth's `expired` property is unconditionally
+    # False when expiry is None — so this check (and the API client's own
+    # automatic before-request refresh, which relies on the same property)
+    # never fires. The token then silently goes stale after ~1h and every
+    # call 401s forever. Refresh unconditionally instead of gating on it.
+    creds.refresh(Request())
+    raw["access_token"] = creds.token
+    token_path.write_text(json.dumps(raw))
     return creds
 
 
@@ -543,15 +559,17 @@ def _gcal_creds(account: str = "business"):
         client_secret=client["client_secret"],
         scopes=raw["scope"].split(),
     )
-    if creds.expired:
-        creds.refresh(Request())
-        raw["access_token"] = creds.token
-        if wrapped:
-            existing = json.loads(token_path.read_text())
-            existing["normal"] = raw
-            token_path.write_text(json.dumps(existing))
-        else:
-            token_path.write_text(json.dumps(raw))
+    # See _gmail_creds: without `expiry` set, google-auth's `.expired` is
+    # always False, so this refresh never fired and the token went stale
+    # after ~1h. Refresh unconditionally instead of gating on `.expired`.
+    creds.refresh(Request())
+    raw["access_token"] = creds.token
+    if wrapped:
+        existing = json.loads(token_path.read_text())
+        existing["normal"] = raw
+        token_path.write_text(json.dumps(existing))
+    else:
+        token_path.write_text(json.dumps(raw))
     return creds
 
 
@@ -640,6 +658,7 @@ def gif_search(query: str) -> str:
     res = http_requests.get(
         "https://api.giphy.com/v1/gifs/search",
         params={"api_key": os.environ["GIPHY_API_KEY"], "q": query, "limit": 1, "rating": "pg-13"},
+        timeout=15,
     )
     if res.status_code != 200:
         return f"GIF search error: {res.text[:300]}"
@@ -649,7 +668,7 @@ def gif_search(query: str) -> str:
         return f"No GIF found for '{query}'."
 
     gif_url = data[0]["images"]["original"]["url"]
-    img_data = http_requests.get(gif_url).content
+    img_data = http_requests.get(gif_url, timeout=15).content
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".gif", prefix="wa_gif_")
     tmp.write(img_data)
     tmp.close()
@@ -717,7 +736,7 @@ def _parse_reminder_when(when: str, tz_name: str = "Asia/Jerusalem") -> datetime
 
     number_pattern = r"(\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|אחת|אחד|שתיים|שתי|שניים|שלוש|ארבע|חמש|שש|שבע|שמונה|תשע|עשר)"
     relative = re.search(
-        rf"(?:in|בעוד)\s+{number_pattern}\s*(minute|minutes|min|hour|hours|day|days|דקה|דקות|שעה|שעות|יום|ימים)",
+        rf"(?:in|בעוד)\s+{number_pattern}\s*(minute|minutes|min|hour|hours|day|days|week|weeks|דקה|דקות|שעה|שעות|יום|ימים|שבוע|שבועות)",
         lowered,
     )
     if relative:
@@ -727,13 +746,38 @@ def _parse_reminder_when(when: str, tz_name: str = "Asia/Jerusalem") -> datetime
             return now + timedelta(minutes=amount)
         if unit in {"hour", "hours", "שעה", "שעות"}:
             return now + timedelta(hours=amount)
-        return now + timedelta(days=amount)
+        if unit in {"week", "weeks", "שבוע", "שבועות"}:
+            date_base = now + timedelta(weeks=amount)
+        else:
+            date_base = now + timedelta(days=amount)
+        # A trailing clock time ("in 2 days at 5pm") would otherwise be silently
+        # dropped by returning immediately here, leaving the reminder at today's
+        # current clock time N days/weeks out instead of the requested hour.
+        trailing_time = re.search(r"(?:at|ב|בשעה)\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?", lowered[relative.end():])
+        if trailing_time:
+            hour = int(trailing_time.group(1))
+            minute = int(trailing_time.group(2) or 0)
+            meridiem = trailing_time.group(3)
+            if meridiem == "pm" and hour != 12:
+                hour += 12
+            elif meridiem == "am" and hour == 12:
+                hour = 0
+            return date_base.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        return date_base
 
     date_base = now
     if "tomorrow" in lowered or "מחר" in lowered:
         date_base = now + timedelta(days=1)
 
-    time_match = re.search(r"(?:at|ב|בשעה)?\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?", lowered)
+    # The keyword prefix must actually be present (or the number must carry its
+    # own unambiguous time marker: am/pm or a colon) — otherwise this matches
+    # the first stray 1-2 digit number anywhere in the text (e.g. "apartment
+    # 4B") and silently creates a reminder at the wrong time.
+    time_match = (
+        re.search(r"(?:at|ב|בשעה)\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?", lowered)
+        or re.search(r"(\d{1,2})(?::(\d{2}))?\s*(am|pm)", lowered)
+        or re.search(r"(\d{1,2}):(\d{2})\s*(am|pm)?", lowered)
+    )
     if time_match:
         hour = int(time_match.group(1))
         minute = int(time_match.group(2) or 0)
@@ -867,6 +911,7 @@ def close_search_leads(query: str, max_results: int = 5) -> str:
         "https://api.close.com/api/v1/lead/",
         auth=(api_key, ""),
         params={"query": query, "_limit": max_results},
+        timeout=15,
     )
     if res.status_code != 200:
         return f"Close API error: {res.text[:300]}"
@@ -999,6 +1044,7 @@ def web_search(query: str, max_results: int = 5) -> str:
         "https://api.search.brave.com/res/v1/web/search",
         headers={"X-Subscription-Token": os.environ["BRAVE_API_KEY"], "Accept": "application/json"},
         params={"q": query, "count": max_results},
+        timeout=15,
     )
     if res.status_code != 200:
         return f"Search error: {res.text[:300]}"
@@ -1017,6 +1063,7 @@ def reverse_geocode(latitude: float, longitude: float) -> str:
     res = http_requests.get(
         "https://maps.googleapis.com/maps/api/geocode/json",
         params={"latlng": f"{latitude},{longitude}", "key": os.environ["GOOGLE_MAPS_API_KEY"]},
+        timeout=15,
     )
     if res.status_code != 200:
         return f"Geocoding error: {res.text[:300]}"
@@ -1041,10 +1088,12 @@ def _sheets_drive_creds():
         client_secret=client["client_secret"],
         scopes=raw["scope"].split(),
     )
-    if creds.expired:
-        creds.refresh(Request())
-        raw["access_token"] = creds.token
-        token_path.write_text(json.dumps(raw))
+    # See _gmail_creds: without `expiry` set, google-auth's `.expired` is
+    # always False, so this refresh never fired and the token went stale
+    # after ~1h. Refresh unconditionally instead of gating on `.expired`.
+    creds.refresh(Request())
+    raw["access_token"] = creds.token
+    token_path.write_text(json.dumps(raw))
     return creds
 
 
@@ -1185,10 +1234,13 @@ def _generate_with_retry(client, **kwargs):
 def run(prompt: str, history: list, image_path: str = None) -> tuple[str, list]:
     global _current_image_path
     _current_image_path = image_path
-    client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
-    contents = _build_contents(history, prompt, image_path)
-
     try:
+        client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+        # Building contents can fail on its own (e.g. an unreadable/truncated
+        # image temp file) — keep it inside the try so that raises the
+        # friendly reply below instead of an uncaught exception crashing
+        # agent_reply.py before anything is printed to stdout.
+        contents = _build_contents(history, prompt, image_path)
         for _ in range(10):  # max tool call rounds
             response = _generate_with_retry(
                 client,
@@ -1214,9 +1266,23 @@ def run(prompt: str, history: list, image_path: str = None) -> tuple[str, list]:
                     # model paraphrase the PHOTO: marker into prose. Still run every tool call the
                     # model requested this round (and give each a function response) before
                     # returning, so a photo result never causes other requested calls to be skipped.
-                    if result.startswith("PHOTO:") and photo_result is None:
-                        photo_result = result
-                        response_data = {"result": "Photo sent to user."}
+                    if result.startswith("PHOTO:"):
+                        if photo_result is None:
+                            photo_result = result
+                            response_data = {"result": "Photo sent to user."}
+                        else:
+                            # Only one PHOTO: result can be delivered per reply (bot.js's
+                            # protocol sends a single image back). A second image/GIF tool
+                            # call in the same round would otherwise leak its temp file
+                            # (bot.js only unlinks the one path it receives) and feed the
+                            # raw "PHOTO:<tmp-path>" marker back into the conversation as
+                            # if it were plain text. Clean up and tell the model plainly.
+                            extra_path = result.split("\n", 1)[0].removeprefix("PHOTO:")
+                            try:
+                                os.unlink(extra_path)
+                            except OSError:
+                                pass
+                            response_data = {"result": "Not sent — only one photo can be sent per reply."}
                     else:
                         response_data = {"result": result}
                     # Gemini requires Content.role to be "user" or "model" — "tool" is

@@ -24,8 +24,10 @@ def creds_for(token_file):
         client_secret=client["client_secret"],
         scopes=raw["scope"].split(),
     )
-    if creds.expired:
-        creds.refresh(Request())
+    # Credentials built without `expiry` are always reported as non-expired
+    # by google-auth, so `.expired` never fires and the token goes stale
+    # after ~1h. Refresh unconditionally instead of gating on `.expired`.
+    creds.refresh(Request())
     return creds
 
 
