@@ -535,7 +535,7 @@ def _gmail_creds(account: str = "business"):
     # call 401s forever. Refresh unconditionally instead of gating on it.
     creds.refresh(Request())
     raw["access_token"] = creds.token
-    token_path.write_text(json.dumps(raw))
+    _atomic_write_text(token_path, json.dumps(raw))
     return creds
 
 
@@ -567,9 +567,9 @@ def _gcal_creds(account: str = "business"):
     if wrapped:
         existing = json.loads(token_path.read_text())
         existing["normal"] = raw
-        token_path.write_text(json.dumps(existing))
+        _atomic_write_text(token_path, json.dumps(existing))
     else:
-        token_path.write_text(json.dumps(raw))
+        _atomic_write_text(token_path, json.dumps(raw))
     return creds
 
 
@@ -720,6 +720,26 @@ def _natural_number(text: str) -> int:
     return _NUMBER_WORDS[normalized]
 
 
+def _hour_24(hour: int, minute: int, meridiem: str, when: str) -> int:
+    """Validate and convert a parsed clock hour/minute to 24-hour form.
+
+    Without this, an out-of-range hour (e.g. "at 15pm") reached
+    date_base.replace(hour=27, ...) and raised a raw, unhandled-looking
+    ValueError instead of the intended friendly "could not understand" reply."""
+    if meridiem:
+        if not (1 <= hour <= 12):
+            raise ValueError(f"Could not understand reminder time '{when}': hour '{hour}{meridiem}' is out of range.")
+        if meridiem == "pm" and hour != 12:
+            hour += 12
+        elif meridiem == "am" and hour == 12:
+            hour = 0
+    elif not (0 <= hour <= 23):
+        raise ValueError(f"Could not understand reminder time '{when}': hour '{hour}' is out of range.")
+    if not (0 <= minute <= 59):
+        raise ValueError(f"Could not understand reminder time '{when}': minute '{minute}' is out of range.")
+    return hour
+
+
 def _parse_reminder_when(when: str, tz_name: str = "Asia/Jerusalem") -> datetime:
     tz = ZoneInfo(tz_name)
     now = datetime.now(tz)
@@ -757,11 +777,7 @@ def _parse_reminder_when(when: str, tz_name: str = "Asia/Jerusalem") -> datetime
         if trailing_time:
             hour = int(trailing_time.group(1))
             minute = int(trailing_time.group(2) or 0)
-            meridiem = trailing_time.group(3)
-            if meridiem == "pm" and hour != 12:
-                hour += 12
-            elif meridiem == "am" and hour == 12:
-                hour = 0
+            hour = _hour_24(hour, minute, trailing_time.group(3), when)
             return date_base.replace(hour=hour, minute=minute, second=0, microsecond=0)
         return date_base
 
@@ -781,11 +797,7 @@ def _parse_reminder_when(when: str, tz_name: str = "Asia/Jerusalem") -> datetime
     if time_match:
         hour = int(time_match.group(1))
         minute = int(time_match.group(2) or 0)
-        meridiem = time_match.group(3)
-        if meridiem == "pm" and hour != 12:
-            hour += 12
-        elif meridiem == "am" and hour == 12:
-            hour = 0
+        hour = _hour_24(hour, minute, time_match.group(3), when)
         candidate = date_base.replace(hour=hour, minute=minute, second=0, microsecond=0)
         if "tomorrow" not in lowered and "מחר" not in lowered and candidate <= now:
             candidate += timedelta(days=1)
@@ -1093,13 +1105,16 @@ def _sheets_drive_creds():
     # after ~1h. Refresh unconditionally instead of gating on `.expired`.
     creds.refresh(Request())
     raw["access_token"] = creds.token
-    token_path.write_text(json.dumps(raw))
+    _atomic_write_text(token_path, json.dumps(raw))
     return creds
 
 
 def _receipts_config():
     if RECEIPTS_CONFIG_FILE.exists():
-        return json.loads(RECEIPTS_CONFIG_FILE.read_text())
+        try:
+            return json.loads(RECEIPTS_CONFIG_FILE.read_text())
+        except (OSError, json.JSONDecodeError):
+            pass  # corrupted (e.g. a pre-atomic-write crash) — recreate below
 
     creds = _sheets_drive_creds()
     drive = build("drive", "v3", credentials=creds)
@@ -1126,7 +1141,7 @@ def _receipts_config():
     ).execute()
 
     config = {"folder_id": folder["id"], "sheet_id": sheet_id}
-    RECEIPTS_CONFIG_FILE.write_text(json.dumps(config))
+    _atomic_write_text(RECEIPTS_CONFIG_FILE, json.dumps(config))
     return config
 
 
