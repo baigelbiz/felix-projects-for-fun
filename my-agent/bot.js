@@ -106,21 +106,41 @@ async function sendProactiveMessage(text) {
     attempts.push(() => client.sendMessage(id, body));
   }
 
+  // withTimeout races an attempt against a timer but can't cancel the
+  // underlying Puppeteer call — a "timed out" attempt that isn't actually
+  // hung keeps running and can still succeed after we've already moved on
+  // to (and succeeded via) a fallback, delivering the same message twice.
+  // Track late resolutions so we can skip starting a further attempt once
+  // any of them — timed-out or not — has actually gone through.
+  let settled = null;
   let lastErr;
   for (const attempt of attempts) {
+    if (settled) return settled;
+    const attemptPromise = attempt();
+    attemptPromise.then((sent) => {
+      if (settled) return;
+      settled = sent || true;
+      if (sent?.id?._serialized) sentByBot.add(sent.id._serialized);
+    }, () => {});
     try {
-      const sent = await withTimeout(attempt(), 30_000, "sendProactiveMessage attempt");
+      const sent = await withTimeout(attemptPromise, 30_000, "sendProactiveMessage attempt");
       if (sent?.id?._serialized) sentByBot.add(sent.id._serialized);
       return sent;
     } catch (e) {
       lastErr = e;
     }
   }
+  if (settled) return settled;
   throw lastErr || new Error("sendProactiveMessage: all delivery attempts failed");
 }
 
 function saveBotState() {
-  fs.writeFileSync(STATE_FILE, JSON.stringify(botState, null, 2));
+  // Write via temp file + rename so a pm2 restart mid-write can't leave a
+  // truncated, unparseable state file (which would silently reset botState
+  // to {} on next boot and re-fire the morning briefing that day).
+  const tmp = `${STATE_FILE}.tmp${process.pid}`;
+  fs.writeFileSync(tmp, JSON.stringify(botState, null, 2));
+  fs.renameSync(tmp, STATE_FILE);
 }
 
 // Routed through the same agentQueue/agentBusy mutex as interactive messages
@@ -172,27 +192,38 @@ client.on("ready", async () => {
 // dead — the watchdog writes here, and the alert goes out once we're back up.
 const OUTBOX_DIR = path.join(__dirname, ".outbox");
 let clientReady = false;
+// A drain can take much longer than the 15s tick (each sendProactiveMessage
+// attempt can itself take up to 30s, several attempts deep) — setInterval
+// doesn't wait for one tick to finish before scheduling the next, so without
+// this guard a still-in-flight drain and a new tick would both pick up the
+// same un-unlinked file and send it twice.
+let outboxDraining = false;
 
 setInterval(async () => {
-  if (!clientReady) return;
-  let files;
+  if (!clientReady || outboxDraining) return;
+  outboxDraining = true;
   try {
-    files = fs.readdirSync(OUTBOX_DIR).filter((f) => f.endsWith(".txt"));
-  } catch {
-    return; // no outbox dir yet
-  }
-  for (const f of files.sort()) {
-    const full = path.join(OUTBOX_DIR, f);
+    let files;
     try {
-      const text = fs.readFileSync(full, "utf8").trim();
-      if (text) {
-        await sendProactiveMessage(text);
-        console.log(`-> outbox sent: ${f}`);
-      }
-      fs.unlinkSync(full);
-    } catch (e) {
-      console.error(`outbox send failed (${f}):`, e.message);
+      files = fs.readdirSync(OUTBOX_DIR).filter((f) => f.endsWith(".txt"));
+    } catch {
+      return; // no outbox dir yet
     }
+    for (const f of files.sort()) {
+      const full = path.join(OUTBOX_DIR, f);
+      try {
+        const text = fs.readFileSync(full, "utf8").trim();
+        if (text) {
+          await sendProactiveMessage(text);
+          console.log(`-> outbox sent: ${f}`);
+        }
+        fs.unlinkSync(full);
+      } catch (e) {
+        console.error(`outbox send failed (${f}):`, e.message);
+      }
+    }
+  } finally {
+    outboxDraining = false;
   }
 }, 15_000);
 

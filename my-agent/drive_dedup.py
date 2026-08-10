@@ -5,6 +5,7 @@ NOT deleted, just reported, since same size doesn't guarantee same content.
 Moves to Trash (recoverable 30 days), never permanent delete.
 """
 import json
+import os
 from collections import defaultdict
 from pathlib import Path
 
@@ -14,6 +15,15 @@ from googleapiclient.discovery import build
 
 CRED_DIR = Path.home() / ".gmail-mcp"
 CLIENT_FILE = CRED_DIR / "gcp-oauth.keys.json"
+
+
+def _atomic_write_text(path: Path, text: str) -> None:
+    """Write via a temp file + rename so a crash/kill mid-write can't leave a
+    truncated, unparseable JSON file behind (same pattern as agent_reply.py)."""
+    tmp = path.with_suffix(path.suffix + f".tmp{os.getpid()}")
+    tmp.write_text(text)
+    tmp.replace(path)
+
 
 NOISE_NAMES = {
     "contents", "macos", "_codesignature", "resources", "info.plist",
@@ -38,7 +48,7 @@ def creds_for(token_file):
     # after ~1h. Refresh unconditionally instead of gating on `.expired`.
     creds.refresh(Request())
     raw["access_token"] = creds.token
-    (CRED_DIR / token_file).write_text(json.dumps(raw))
+    _atomic_write_text(CRED_DIR / token_file, json.dumps(raw))
     return creds
 
 
