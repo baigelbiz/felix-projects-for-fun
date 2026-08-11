@@ -8,6 +8,7 @@ persisting message history between calls (.whatsapp_session file).
 import json
 import os
 import re
+import socket
 import sys
 import tempfile
 import time
@@ -34,6 +35,17 @@ from openai import OpenAI  # still used for generate_image (gpt-image-1); the ch
 # nothing. load_dotenv() never overrides a var that's already set, so this
 # is a no-op under bot.js and only fills the gap for standalone invocations.
 load_dotenv(Path(__file__).parent / ".env")
+
+# The raw `requests` calls in this file (gif_search, close_search_leads,
+# web_search, reverse_geocode, _close_request) all pass an explicit timeout,
+# but every Gmail/Calendar/Sheets/Drive call goes through googleapiclient's
+# discovery `build()`, which uses httplib2 under the hood with no timeout
+# configured anywhere — a stalled Google API connection would otherwise hang
+# until bot.js's own 300s execFile timeout kills the whole process, instead
+# of failing fast with a friendly reply. socket.setdefaulttimeout() bounds
+# any socket this process opens that doesn't set its own timeout, without
+# touching the calls that already do.
+socket.setdefaulttimeout(25)
 
 
 def _atomic_write_text(path: Path, text: str) -> None:
@@ -649,7 +661,12 @@ def generate_image(prompt: str) -> str:
     )
     img_data = base64.b64decode(result.data[0].b64_json)
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".png", prefix="wa_generated_")
-    tmp.write(img_data)
+    try:
+        tmp.write(img_data)
+    except Exception:
+        tmp.close()
+        os.unlink(tmp.name)
+        raise
     tmp.close()
     return f"PHOTO:{tmp.name}\nGenerated: {prompt[:200]}"
 
@@ -670,7 +687,12 @@ def gif_search(query: str) -> str:
     gif_url = data[0]["images"]["original"]["url"]
     img_data = http_requests.get(gif_url, timeout=15).content
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".gif", prefix="wa_gif_")
-    tmp.write(img_data)
+    try:
+        tmp.write(img_data)
+    except Exception:
+        tmp.close()
+        os.unlink(tmp.name)
+        raise
     tmp.close()
     return f"PHOTO:{tmp.name}\n{data[0].get('title', query)}"
 
