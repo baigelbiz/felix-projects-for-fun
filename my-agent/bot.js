@@ -41,6 +41,15 @@ const CHROMIUM_PATH = process.env.PUPPETEER_EXECUTABLE_PATH;
 
 const client = new Client({
   authStrategy: new LocalAuth({ dataPath: path.join(__dirname, ".wwebjs_auth") }),
+  // whatsapp-web.js defaults to pinning whatever WhatsApp Web version it first
+  // negotiates into .wwebjs_cache/ and reusing that exact snapshot on every
+  // later restart, instead of re-checking with WhatsApp. That snapshot goes
+  // stale as WhatsApp updates its web client server-side, and stale media
+  // decryption is exactly what was breaking downloadMedia() for voice notes
+  // and images (see transcribeVoiceNote and the image handler below).
+  // type: 'none' disables the pin so the client always negotiates whatever
+  // version WhatsApp is currently serving, live, on every connect.
+  webVersionCache: { type: "none" },
   puppeteer: CHROMIUM_PATH
     ? {
         executablePath: CHROMIUM_PATH,
@@ -372,9 +381,9 @@ client.on("message_create", async (msg) => {
         `detail=${JSON.stringify(detail)}`
       );
       console.error("transcription failed [stack]:", e?.stack || "(no stack — error is not an Error object)");
-      // Voice-note media download is currently broken by a whatsapp-web.js vs.
-      // WhatsApp Web version drift (downloadMedia throws inside the WA page).
-      // Give the user an actionable message instead of the raw internal error.
+      // downloadMedia() can still fail for ordinary transient reasons (dropped
+      // page, network blip). Give the user an actionable message instead of
+      // the raw internal error rather than leaving them with silence.
       try {
         const sent = await msg.reply(`${BOT_MARK}🎙️ I couldn't read that voice note — voice transcription is temporarily down. Please type it out and I'll help right away 🙏`);
         if (sent?.id?._serialized) sentByBot.add(sent.id._serialized);
@@ -395,11 +404,10 @@ client.on("message_create", async (msg) => {
       prompt = (msg.body || "").trim() || "What's in this image?";
       console.log(`-> received image, caption: ${prompt.slice(0, 80)}`);
     } catch (e) {
-      // Same root cause as the voice-note failure above: a whatsapp-web.js vs.
-      // WhatsApp Web version drift makes downloadMedia() throw an opaque error
-      // for all incoming media, not just audio. Log full diagnostics (a raw
-      // .message can be a single opaque character, e.g. "r") and give the user
-      // an actionable message instead of echoing that back.
+      // downloadMedia() can throw an opaque error (a raw .message can be a
+      // single opaque character, e.g. "r") for any incoming media, not just
+      // audio. Log full diagnostics and give the user an actionable message
+      // instead of echoing that back.
       console.error(
         "image download failed:",
         `status=${e?.status ?? ""}`,
