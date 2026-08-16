@@ -111,18 +111,28 @@ async function sendProactiveMessage(text) {
   // hung keeps running and can still succeed after we've already moved on
   // to (and succeeded via) a fallback, delivering the same message twice.
   // Track late resolutions so we can skip starting a further attempt once
-  // any of them — timed-out or not — has actually gone through.
+  // any of them — timed-out or not — has actually gone through. NOTE: this
+  // only prevents starting a 3rd+ attempt after the fact — it can't stop a
+  // fallback that's already in flight when a "timed out" earlier attempt
+  // itself succeeds moments later, so a duplicate WhatsApp message is still
+  // possible in that narrow window. Fully closing that gap needs the ability
+  // to cancel the in-flight Puppeteer call, which whatsapp-web.js doesn't expose.
   let settled = null;
   let lastErr;
   for (const attempt of attempts) {
     if (settled) return settled;
-    const attemptPromise = attempt();
-    attemptPromise.then((sent) => {
-      if (settled) return;
-      settled = sent || true;
-      if (sent?.id?._serialized) sentByBot.add(sent.id._serialized);
-    }, () => {});
     try {
+      // attempt() itself must stay inside this try — a synchronous throw here
+      // (not just an async rejection) used to escape uncaught and abort the
+      // whole fallback loop instead of falling through to the next delivery
+      // path, silently dropping the message even though other attempts were
+      // never tried.
+      const attemptPromise = attempt();
+      attemptPromise.then((sent) => {
+        if (settled) return;
+        settled = sent || true;
+        if (sent?.id?._serialized) sentByBot.add(sent.id._serialized);
+      }, () => {});
       const sent = await withTimeout(attemptPromise, 30_000, "sendProactiveMessage attempt");
       if (sent?.id?._serialized) sentByBot.add(sent.id._serialized);
       return sent;
