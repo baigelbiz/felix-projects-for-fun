@@ -25,7 +25,19 @@ const SCRIPT = path.join(__dirname, "agent_reply.py");
 // anonymized @lid, so we accept both.
 const ALLOWED_IDS = ["18582629123@c.us", "225864126062745@lid", "38517333864587@lid"];
 const BOT_MARK = "🤖 "; // prefix on every bot reply, used to ignore our own messages
-const sentByBot = new Set(); // ids of messages the bot itself sent
+// ids of messages the bot itself sent, so the incoming-message handler can
+// ignore its own echoes. Only needs to cover the brief window until the echo
+// arrives, but nothing ever removed entries — capped so a long-running
+// pm2-supervised process doesn't leak memory indefinitely.
+const sentByBot = new Set();
+const SENT_BY_BOT_MAX = 500;
+function markSentByBot(id) {
+  if (!id) return;
+  sentByBot.add(id);
+  if (sentByBot.size > SENT_BY_BOT_MAX) {
+    sentByBot.delete(sentByBot.values().next().value);
+  }
+}
 let agentBusy = false;
 const agentQueue = [];
 const STATE_FILE = path.join(__dirname, ".bot_state.json");
@@ -41,6 +53,15 @@ const CHROMIUM_PATH = process.env.PUPPETEER_EXECUTABLE_PATH;
 
 const client = new Client({
   authStrategy: new LocalAuth({ dataPath: path.join(__dirname, ".wwebjs_auth") }),
+  // whatsapp-web.js defaults to pinning whatever WhatsApp Web version it first
+  // negotiates into .wwebjs_cache/ and reusing that exact snapshot on every
+  // later restart, instead of re-checking with WhatsApp. That snapshot goes
+  // stale as WhatsApp updates its web client server-side, and stale media
+  // decryption is exactly what was breaking downloadMedia() for voice notes
+  // and images (see transcribeVoiceNote and the image handler below).
+  // type: 'none' disables the pin so the client always negotiates whatever
+  // version WhatsApp is currently serving, live, on every connect.
+  webVersionCache: { type: "none" },
   puppeteer: CHROMIUM_PATH
     ? {
         executablePath: CHROMIUM_PATH,
@@ -107,26 +128,50 @@ async function sendProactiveMessage(text) {
   }
 
   // withTimeout races an attempt against a timer but can't cancel the
-  // underlying Puppeteer call — a "timed out" attempt that isn't actually
-  // hung keeps running and can still succeed after we've already moved on
-  // to (and succeeded via) a fallback, delivering the same message twice.
-  // Track late resolutions so we can skip starting a further attempt once
-  // any of them — timed-out or not — has actually gone through.
+  // underlying Puppeteer call — the send request has already reached
+  // WhatsApp by the time we give up waiting, so a "timed out" attempt that
+  // isn't actually hung keeps running in the background and can still
+  // succeed after we've already moved on to (and succeeded via) a
+  // fallback, delivering the same message twice. That's not fully
+  // preventable without the ability to cancel an in-flight Puppeteer call,
+  // but a generous per-attempt timeout keeps us from abandoning attempts
+  // that are merely slow (the common case) rather than truly hung, and
+  // checking `settled` right before returning — not just at the top of the
+  // next loop iteration — closes the narrow window where a still-pending
+  // earlier attempt's success lands while we're mid-await on a later one.
   let settled = null;
   let lastErr;
   for (const attempt of attempts) {
     if (settled) return settled;
-    const attemptPromise = attempt();
-    attemptPromise.then((sent) => {
-      if (settled) return;
-      settled = sent || true;
-      if (sent?.id?._serialized) sentByBot.add(sent.id._serialized);
-    }, () => {});
+    // True while we're still actively waiting on this specific attempt (via
+    // the await below) — used to tell a normal same-tick resolution (this
+    // .then() and the await's internal race both listen on attemptPromise,
+    // and this one was attached first so it fires first) from a genuinely
+    // late resolution arriving after we've already timed out on / moved past
+    // this attempt.
+    let stillWaiting = true;
     try {
-      const sent = await withTimeout(attemptPromise, 30_000, "sendProactiveMessage attempt");
-      if (sent?.id?._serialized) sentByBot.add(sent.id._serialized);
+      // attempt() itself must stay inside this try — a synchronous throw here
+      // (not just an async rejection) used to escape uncaught and abort the
+      // whole fallback loop instead of falling through to the next delivery
+      // path, silently dropping the message even though other attempts were
+      // never tried.
+      const attemptPromise = attempt();
+      attemptPromise.then((sent) => {
+        if (settled) return;
+        settled = sent || true;
+        markSentByBot(sent?.id?._serialized);
+        if (!stillWaiting) {
+          console.warn("sendProactiveMessage: an earlier attempt succeeded after we'd already moved on to a fallback — possible duplicate delivery");
+        }
+      }, () => {});
+      const sent = await withTimeout(attemptPromise, 45_000, "sendProactiveMessage attempt");
+      stillWaiting = false;
+      if (settled) return settled;
+      markSentByBot(sent?.id?._serialized);
       return sent;
     } catch (e) {
+      stillWaiting = false;
       lastErr = e;
     }
   }
@@ -148,16 +193,25 @@ function saveBotState() {
 // run agent_reply.py, which reads and rewrites the shared .whatsapp_session
 // and .assistant_memory.json files, so running two at once could clobber
 // each other's state if a briefing fires while a user message is in flight.
-function sendMorningBriefing() {
+function sendMorningBriefing(date) {
   agentQueue.push({
     prompt:
       "[Scheduled morning briefing] Prepare my concise morning briefing for today. " +
       "Read both business and personal calendars, search Close CRM for new leads or follow-ups due, " +
       "and include only useful action items. Use short WhatsApp-friendly bullets.",
     isBriefing: true,
+    briefingDate: date,
   });
   processQueue();
 }
+
+// In-memory only (not persisted): stops scheduleMorningBriefing's 30s poll
+// from re-queueing the briefing repeatedly within the same 07:00-07:02
+// window/process lifetime. botState.briefingDate (persisted) is only set once
+// the briefing has actually been sent — see processQueue's isBriefing branch
+// — so a crash/restart mid-send correctly retries instead of silently
+// skipping the day's briefing forever.
+let briefingQueuedDate = null;
 
 function scheduleMorningBriefing() {
   const check = () => {
@@ -167,10 +221,14 @@ function scheduleMorningBriefing() {
       hour: "2-digit", minute: "2-digit", hour12: false,
     }).formatToParts(now).reduce((out, part) => ((out[part.type] = part.value), out), {});
     const date = `${israel.year}-${israel.month}-${israel.day}`;
-    if (israel.hour === "07" && Number(israel.minute) < 2 && botState.briefingDate !== date) {
-      botState.briefingDate = date;
-      saveBotState();
-      sendMorningBriefing();
+    if (
+      israel.hour === "07" &&
+      Number(israel.minute) < 2 &&
+      botState.briefingDate !== date &&
+      briefingQueuedDate !== date
+    ) {
+      briefingQueuedDate = date;
+      sendMorningBriefing(date);
     }
   };
   check();
@@ -303,7 +361,7 @@ client.on("message_create", async (msg) => {
     }
     try {
       const sent = await msg.reply(BOT_MARK + reply);
-      if (sent?.id?._serialized) sentByBot.add(sent.id._serialized);
+      markSentByBot(sent?.id?._serialized);
     } catch (e) { console.error("miles reply failed:", e.message); }
     return;
   }
@@ -317,7 +375,7 @@ client.on("message_create", async (msg) => {
         const text = err ? `⚠️ Riley errored: ${(stderr || err.message).slice(0, 250)}` : stdout.trim().slice(0, 3800);
         try {
           const sent = await msg.reply(BOT_MARK + "✍️ Riley:\n" + text);
-          if (sent?.id?._serialized) sentByBot.add(sent.id._serialized);
+          markSentByBot(sent?.id?._serialized);
         } catch (e) { console.error("riley reply failed:", e.message); }
       });
     return;
@@ -335,7 +393,7 @@ client.on("message_create", async (msg) => {
         `${new Date().toISOString()} ${note}\n`);
       try {
         const sent = await msg.reply(`${BOT_MARK}📋 Logged for the social manager.`);
-        if (sent?.id?._serialized) sentByBot.add(sent.id._serialized);
+        markSentByBot(sent?.id?._serialized);
       } catch (e) {
         console.error("intel ack failed:", e.message);
       }
@@ -372,12 +430,12 @@ client.on("message_create", async (msg) => {
         `detail=${JSON.stringify(detail)}`
       );
       console.error("transcription failed [stack]:", e?.stack || "(no stack — error is not an Error object)");
-      // Voice-note media download is currently broken by a whatsapp-web.js vs.
-      // WhatsApp Web version drift (downloadMedia throws inside the WA page).
-      // Give the user an actionable message instead of the raw internal error.
+      // downloadMedia() can still fail for ordinary transient reasons (dropped
+      // page, network blip). Give the user an actionable message instead of
+      // the raw internal error rather than leaving them with silence.
       try {
         const sent = await msg.reply(`${BOT_MARK}🎙️ I couldn't read that voice note — voice transcription is temporarily down. Please type it out and I'll help right away 🙏`);
-        if (sent?.id?._serialized) sentByBot.add(sent.id._serialized);
+        markSentByBot(sent?.id?._serialized);
       } catch (e) {
         console.error("voice-note error reply failed:", e.message);
       }
@@ -395,11 +453,10 @@ client.on("message_create", async (msg) => {
       prompt = (msg.body || "").trim() || "What's in this image?";
       console.log(`-> received image, caption: ${prompt.slice(0, 80)}`);
     } catch (e) {
-      // Same root cause as the voice-note failure above: a whatsapp-web.js vs.
-      // WhatsApp Web version drift makes downloadMedia() throw an opaque error
-      // for all incoming media, not just audio. Log full diagnostics (a raw
-      // .message can be a single opaque character, e.g. "r") and give the user
-      // an actionable message instead of echoing that back.
+      // downloadMedia() can throw an opaque error (a raw .message can be a
+      // single opaque character, e.g. "r") for any incoming media, not just
+      // audio. Log full diagnostics and give the user an actionable message
+      // instead of echoing that back.
       console.error(
         "image download failed:",
         `status=${e?.status ?? ""}`,
@@ -410,7 +467,7 @@ client.on("message_create", async (msg) => {
       console.error("image download failed [stack]:", e?.stack || "(no stack — error is not an Error object)");
       try {
         const sent = await msg.reply(`${BOT_MARK}📷 I couldn't read that image — photo downloads are temporarily down. Please describe it in text (or type out the receipt details) and I'll help right away 🙏`);
-        if (sent?.id?._serialized) sentByBot.add(sent.id._serialized);
+        markSentByBot(sent?.id?._serialized);
       } catch (e2) {
         console.error("image error reply failed:", e2.message);
       }
@@ -428,7 +485,7 @@ client.on("message_create", async (msg) => {
 function processQueue() {
   if (agentBusy || agentQueue.length === 0) return;
   agentBusy = true;
-  const { prompt, imagePath, msg, isBriefing } = agentQueue.shift();
+  const { prompt, imagePath, msg, isBriefing, briefingDate } = agentQueue.shift();
   console.log(`-> agent: ${prompt.slice(0, 80)}`);
   const scriptArgs = imagePath ? [SCRIPT, prompt, imagePath] : [SCRIPT, prompt];
   execFile(
@@ -458,6 +515,17 @@ function processQueue() {
               }
               await sendProactiveMessage("Good morning.\n\n" + body);
               console.log("-> morning briefing sent");
+              // Persist only now that the briefing has actually gone out — not
+              // when it was scheduled/queued. Marking it sent up front meant a
+              // crash or pm2 restart anywhere between the 07:00 check and the
+              // send actually completing (agent_reply.py alone can take up to
+              // 300s) would permanently and silently skip that day's briefing,
+              // since the in-memory queue item is lost but the persisted flag
+              // would already say "done".
+              if (botState.briefingDate !== briefingDate) {
+                botState.briefingDate = briefingDate;
+                saveBotState();
+              }
             } catch (e) {
               console.error("morning briefing send failed:", e.message);
             }
@@ -493,7 +561,7 @@ function processQueue() {
               30_000,
               "chat.sendMessage"
             );
-            if (sent?.id?._serialized) sentByBot.add(sent.id._serialized);
+            markSentByBot(sent?.id?._serialized);
           } finally {
             // Delete regardless of whether the send above succeeded — a hung/failed
             // sendMessage (the exact "Puppeteer send hangs" case this file already
@@ -502,7 +570,7 @@ function processQueue() {
           }
         } else {
           const sent = await withTimeout(msg.reply(BOT_MARK + raw.slice(0, 4000)), 30_000, "msg.reply");
-          if (sent?.id?._serialized) sentByBot.add(sent.id._serialized);
+          markSentByBot(sent?.id?._serialized);
         }
       } catch (e) {
         console.error("reply failed:", e.message);
