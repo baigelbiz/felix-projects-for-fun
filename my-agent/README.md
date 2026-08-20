@@ -89,6 +89,24 @@ pm2 save
 To roll back, `pm2 start bot.js` the same way. Once Baileys is trusted, `bot.js`
 and the `whatsapp-web.js` dependency can be removed.
 
+### Transcribing recorded phone calls
+
+Beyond quick voice notes, the Baileys bot handles **recorded phone calls** sent
+as audio (a voice note, an inline audio clip, or a file/document whose type is
+audio — m4a, mp3, ogg, wav, etc.). It downloads and transcribes them with
+Whisper (auto-detecting the language for recordings), then acts on the
+transcript:
+
+- **Send a caption with the recording** and the bot does exactly that with it —
+  e.g. caption "pull out the action items and who owns each" or "summarize in 5
+  bullets."
+- **No caption** → it defaults to a concise WhatsApp-friendly bullet summary
+  (key points, decisions, names, numbers/dates, action items).
+
+A ptt voice note with no caption keeps the old quick conversational reply.
+Whisper's hard limit is 25 MB per file — larger recordings get a clear
+"too big, send a shorter/compressed clip" reply rather than a silent failure.
+
 ## What's inside
 
 - `main.py` — an agent with a custom `roll_dice` tool (in-process MCP server),

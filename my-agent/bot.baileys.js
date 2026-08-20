@@ -228,26 +228,54 @@ async function downloadBuffer(m) {
   );
 }
 
-async function transcribeVoiceNote(m) {
+// OpenAI Whisper's hard upload limit is 25 MB. Guard so an over-limit file
+// gives a clear message instead of an opaque API error.
+const WHISPER_MAX_BYTES = 25 * 1024 * 1024;
+
+const HEBREW_BIAS =
+  "שיחה עסקית בעברית על נדל\"ן. שמות של אנשים, מקומות וחברות באנגלית נשארים באנגלית, " +
+  "למשל: Kenneth, North Carolina, San Diego, Close CRM, Shefa Homes.";
+
+// Pick a Whisper-accepted container extension from the WhatsApp mimetype (or
+// filename). A forwarded voice note is opus-in-ogg; a phone-call recording sent
+// as a file is usually m4a/mp3/wav.
+function whisperExt(mimetype, fileName) {
+  const mt = (mimetype || "").toLowerCase();
+  if (/(ogg|opus)/.test(mt)) return "ogg";
+  if (/(mpeg|mp3|mpga)/.test(mt)) return "mp3";
+  if (/(mp4|m4a|aac)/.test(mt)) return "m4a";
+  if (/wav/.test(mt)) return "wav";
+  if (/webm/.test(mt)) return "webm";
+  if (/flac/.test(mt)) return "flac";
+  const m = (fileName || "").toLowerCase().match(/\.([a-z0-9]+)$/);
+  const ok = ["ogg", "oga", "mp3", "mpga", "mpeg", "m4a", "mp4", "wav", "webm", "flac"];
+  if (m && ok.includes(m[1])) return m[1] === "oga" ? "ogg" : m[1];
+  return "ogg"; // sane default for WhatsApp audio
+}
+
+// Download WhatsApp audio and transcribe it with Whisper. `opts.language`
+// (e.g. "he") biases a language; omit it to let Whisper auto-detect — the right
+// choice for phone-call recordings, which may be English, Hebrew, or mixed.
+// `opts.biasPrompt` nudges the spelling of proper nouns.
+async function transcribeAudio(m, opts = {}) {
   const buf = await downloadBuffer(m);
   if (!buf || !buf.length) {
-    throw new Error("voice note media could not be downloaded (empty response from WhatsApp)");
+    throw new Error("audio media could not be downloaded (empty response from WhatsApp)");
   }
-  console.log(`-> voice media downloaded: ${buf.length} bytes`);
-  const tmpFile = path.join(os.tmpdir(), `wa_voice_${Date.now()}.ogg`);
+  console.log(`-> audio downloaded: ${buf.length} bytes`);
+  if (buf.length > WHISPER_MAX_BYTES) {
+    const err = new Error(`audio is ${(buf.length / 1048576).toFixed(1)} MB, over Whisper's 25 MB limit`);
+    err.tooLarge = true;
+    throw err;
+  }
+  const tmpFile = path.join(os.tmpdir(), `wa_audio_${Date.now()}.${opts.ext || "ogg"}`);
   fs.writeFileSync(tmpFile, buf);
   try {
     console.log("-> calling OpenAI whisper...");
-    const transcript = await openai.audio.transcriptions.create({
-      file: fs.createReadStream(tmpFile),
-      model: "whisper-1",
-      language: "he",
-      // Bias Whisper to keep embedded English names/terms in English letters
-      // instead of forcing them into Hebrew spelling.
-      prompt:
-        "שיחה עסקית בעברית על נדל\"ן. שמות של אנשים, מקומות וחברות באנגלית נשארים באנגלית, " +
-        "למשל: Kenneth, North Carolina, San Diego, Close CRM, Shefa Homes.",
-    });
+    const params = { file: fs.createReadStream(tmpFile), model: "whisper-1" };
+    if (opts.language) params.language = opts.language;
+    if (opts.biasPrompt) params.prompt = opts.biasPrompt;
+    const transcript = await openai.audio.transcriptions.create(params);
     return transcript.text;
   } finally {
     fs.unlinkSync(tmpFile);
@@ -285,10 +313,17 @@ async function handleMessage(m) {
   const type = getContentType(content);
 
   const isVoice = type === "audioMessage";
+  // A recorded phone call is usually forwarded as a file attachment, not a
+  // voice note — accept documents whose mimetype/filename looks like audio.
+  const isAudioDoc =
+    type === "documentMessage" &&
+    /(audio|mpeg|mp3|mpga|m4a|mp4|ogg|opus|wav|webm|flac|aac|amr)/i.test(
+      `${content.documentMessage?.mimetype || ""} ${content.documentMessage?.fileName || ""}`
+    );
   const isImage = type === "imageMessage";
   const isLocation = type === "locationMessage";
   const isText = type === "conversation" || type === "extendedTextMessage";
-  if (!isVoice && !isImage && !isLocation && !isText) return;
+  if (!isVoice && !isAudioDoc && !isImage && !isLocation && !isText) return;
 
   const body = isText ? extractText(content, type) : "";
   // Belt-and-suspenders: never answer our own prefixed replies.
@@ -370,12 +405,32 @@ async function handleMessage(m) {
     const label = loc.name || loc.address || "";
     prompt = `[Location shared]: latitude=${loc.degreesLatitude}, longitude=${loc.degreesLongitude}` + (label ? ` (${label})` : "");
     console.log(`-> received location: ${loc.degreesLatitude},${loc.degreesLongitude}${label ? ` (${label})` : ""}`);
-  } else if (isVoice) {
-    console.log("-> transcribing voice note...");
+  } else if (isVoice || isAudioDoc) {
+    // A ptt voice note stays the quick conversational assistant. A non-ptt
+    // audio clip or an audio file/document is treated as a recording to
+    // process: transcribed, then handled per the caption you send with it
+    // (or summarized into bullets by default).
+    const audioMsg = isVoice ? content.audioMessage : content.documentMessage;
+    const isPttNote = isVoice && audioMsg?.ptt;
+    const ext = whisperExt(audioMsg?.mimetype, audioMsg?.fileName);
+    const caption = (content.documentMessage?.caption || "").trim();
+    console.log(`-> transcribing ${isPttNote ? "voice note" : "audio recording"} (ext=${ext})...`);
     try {
-      const transcript = await transcribeVoiceNote(m);
-      prompt = `[Voice note]: ${transcript}`;
-      console.log(`-> transcribed: ${transcript.slice(0, 80)}`);
+      const transcript = await transcribeAudio(m, {
+        ext,
+        language: isPttNote ? "he" : undefined,
+        biasPrompt: isPttNote ? HEBREW_BIAS : undefined,
+      });
+      console.log(`-> transcribed ${transcript.length} chars: ${transcript.slice(0, 80)}`);
+      if (isPttNote) {
+        prompt = `[Voice note]: ${transcript}`;
+      } else {
+        const instruction =
+          caption ||
+          "Summarize this recorded phone call into concise, WhatsApp-friendly bullet points — " +
+            "key points, decisions, names, numbers/dates, and any action items or follow-ups.";
+        prompt = `[Transcribed audio recording. Do this with it: ${instruction}]\n\nTranscript:\n${transcript}`;
+      }
     } catch (e) {
       const detail = e?.error || e?.response?.data || {};
       console.error(
@@ -388,7 +443,11 @@ async function handleMessage(m) {
         `detail=${JSON.stringify(detail)}`
       );
       console.error("transcription failed [stack]:", e?.stack || "(no stack)");
-      await reply("🎙️ I couldn't read that voice note — voice transcription is temporarily down. Please type it out and I'll help right away 🙏");
+      if (e?.tooLarge) {
+        await reply(`🎙️ That recording is too big for me to transcribe (${e.message.match(/[\d.]+ MB/)?.[0] || "over 25 MB"}). Whisper caps audio at 25 MB — please send a shorter clip or a compressed copy.`);
+      } else {
+        await reply("🎙️ I couldn't transcribe that audio — transcription is temporarily down, or it's a format I can't read (try m4a, mp3, ogg, or wav). Please try again or type it out 🙏");
+      }
       return;
     }
   } else if (isImage) {
