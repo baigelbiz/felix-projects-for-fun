@@ -5,6 +5,7 @@ __pycache__/
 node_modules/
 .wwebjs_auth/
 .wwebjs_cache/
+.baileys_auth/
 qr.png
 .whatsapp_session
 .assistant_memory.json
