@@ -104,8 +104,15 @@ transcript:
   (key points, decisions, names, numbers/dates, action items).
 
 A ptt voice note with no caption keeps the old quick conversational reply.
-Whisper's hard limit is 25 MB per file — larger recordings get a clear
-"too big, send a shorter/compressed clip" reply rather than a silent failure.
+
+**ffmpeg (recommended).** If `ffmpeg` is on the server, every recording is first
+transcoded to compact 16 kHz mono Opus — this normalizes any format (including
+ones Whisper rejects outright, like `.amr`/`.3gp`) and shrinks it to roughly
+7 MB per hour of speech, so long calls stay under Whisper's 25 MB limit. Install
+once with `apt-get install -y ffmpeg`. Without ffmpeg the bot still works, but
+audio goes to Whisper as-is: exotic formats may fail and a recording over 25 MB
+gets a clear "too big — send a shorter/compressed clip" reply instead of a
+silent failure.
 
 ## What's inside
 

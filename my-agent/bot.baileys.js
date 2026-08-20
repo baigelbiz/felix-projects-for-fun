@@ -33,6 +33,8 @@ const pino = require("pino");
 const qrcode = require("qrcode");
 const qrterm = require("qrcode-terminal");
 const { execFile } = require("child_process");
+const { promisify } = require("util");
+const execFileP = promisify(execFile);
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
@@ -253,6 +255,23 @@ function whisperExt(mimetype, fileName) {
   return "ogg"; // sane default for WhatsApp audio
 }
 
+// ffmpeg lets us transcode any recording (incl. formats Whisper rejects like
+// .amr/.3gp) into compact 16 kHz mono Opus — roughly 7 MB per hour of speech,
+// so long phone calls fit under the 25 MB cap. Checked once and cached; the bot
+// still works without ffmpeg, just without transcode/compression.
+let _ffmpegState = null;
+async function ffmpegOk() {
+  if (_ffmpegState !== null) return _ffmpegState;
+  try {
+    await execFileP("ffmpeg", ["-version"]);
+    _ffmpegState = true;
+  } catch {
+    _ffmpegState = false;
+    console.warn("ffmpeg not found — audio goes to Whisper as-is (no transcode/compress; .amr and >25 MB recordings may fail). Install with: apt-get install -y ffmpeg");
+  }
+  return _ffmpegState;
+}
+
 // Download WhatsApp audio and transcribe it with Whisper. `opts.language`
 // (e.g. "he") biases a language; omit it to let Whisper auto-detect — the right
 // choice for phone-call recordings, which may be English, Hebrew, or mixed.
@@ -263,22 +282,42 @@ async function transcribeAudio(m, opts = {}) {
     throw new Error("audio media could not be downloaded (empty response from WhatsApp)");
   }
   console.log(`-> audio downloaded: ${buf.length} bytes`);
-  if (buf.length > WHISPER_MAX_BYTES) {
-    const err = new Error(`audio is ${(buf.length / 1048576).toFixed(1)} MB, over Whisper's 25 MB limit`);
-    err.tooLarge = true;
-    throw err;
-  }
-  const tmpFile = path.join(os.tmpdir(), `wa_audio_${Date.now()}.${opts.ext || "ogg"}`);
-  fs.writeFileSync(tmpFile, buf);
+  const rawFile = path.join(os.tmpdir(), `wa_audio_${Date.now()}.${opts.ext || "ogg"}`);
+  fs.writeFileSync(rawFile, buf);
+  let workFile = rawFile;
+  let transcoded = null;
   try {
+    if (await ffmpegOk()) {
+      transcoded = path.join(os.tmpdir(), `wa_audio_${Date.now()}_16k.ogg`);
+      try {
+        await execFileP(
+          "ffmpeg",
+          ["-y", "-i", rawFile, "-ac", "1", "-ar", "16000", "-c:a", "libopus", "-b:a", "16k", transcoded],
+          { timeout: 180_000 }
+        );
+        workFile = transcoded;
+        console.log(`-> transcoded to ${fs.statSync(transcoded).size} bytes (16 kHz mono opus)`);
+      } catch (te) {
+        console.warn("ffmpeg transcode failed, falling back to original:", (te.message || "").slice(0, 200));
+        transcoded = null;
+        workFile = rawFile;
+      }
+    }
+    const size = fs.statSync(workFile).size;
+    if (size > WHISPER_MAX_BYTES) {
+      const err = new Error(`audio is ${(size / 1048576).toFixed(1)} MB, over Whisper's 25 MB limit`);
+      err.tooLarge = true;
+      throw err;
+    }
     console.log("-> calling OpenAI whisper...");
-    const params = { file: fs.createReadStream(tmpFile), model: "whisper-1" };
+    const params = { file: fs.createReadStream(workFile), model: "whisper-1" };
     if (opts.language) params.language = opts.language;
     if (opts.biasPrompt) params.prompt = opts.biasPrompt;
     const transcript = await openai.audio.transcriptions.create(params);
     return transcript.text;
   } finally {
-    fs.unlinkSync(tmpFile);
+    fs.unlink(rawFile, () => {});
+    if (transcoded) fs.unlink(transcoded, () => {});
   }
 }
 
