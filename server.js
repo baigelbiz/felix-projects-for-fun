@@ -100,6 +100,19 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // Serve the Vagaro booking page
+  if (req.method === "GET" && (req.url === "/book" || req.url === "/book.html")) {
+    fs.readFile(path.join(__dirname, "book.html"), (err, html) => {
+      if (err) {
+        res.writeHead(500);
+        return res.end("Could not load page");
+      }
+      res.writeHead(200, { "Content-Type": "text/html" });
+      res.end(html);
+    });
+    return;
+  }
+
   // Handle the form submission
   if (req.method === "POST" && req.url === "/api/lead") {
     let body = "";

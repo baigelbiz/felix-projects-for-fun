@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Book Now — One Stop Beauty Medspa</title>
+<meta name="description" content="Book your appointment at One Stop Beauty Medspa — facials, injectables, laser, waxing and more. Reserve online in seconds.">
+<style>
+  :root{
+    --bg:#0f1115;
+    --panel:#171a21;
+    --panel-2:#1d212a;
+    --line:#2a2f3a;
+    --text:#eef1f6;
+    --muted:#9aa3b2;
+    --accent:#16c784;
+    --accent-2:#13a06a;
+    --ring:rgba(22,199,132,.35);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:radial-gradient(1200px 600px at 50% -10%,#1a2330 0%,var(--bg) 55%) no-repeat,var(--bg);
+    color:var(--text);
+    line-height:1.55;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1040px;margin:0 auto;padding:0 20px}
+
+  /* Top bar */
+  .topbar{padding:22px 0;display:flex;align-items:center;justify-content:space-between}
+  .brand{font-weight:800;letter-spacing:.3px;font-size:18px}
+  .brand span{color:var(--accent)}
+  .badge{font-size:12px;color:var(--muted);border:1px solid var(--line);padding:6px 12px;border-radius:999px}
+
+  /* Hero */
+  .hero{text-align:center;padding:40px 0 20px;max-width:680px;margin:0 auto}
+  .eyebrow{display:inline-block;color:var(--accent);font-weight:700;font-size:13px;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:16px}
+  h1{font-size:44px;line-height:1.08;margin:0 0 18px;font-weight:800;letter-spacing:-.5px}
+  h1 em{color:var(--accent);font-style:normal}
+  .sub{font-size:18px;color:var(--muted);margin:0 auto 4px;max-width:560px}
+
+  /* Booking card */
+  .book-card{
+    background:linear-gradient(180deg,var(--panel) 0%,var(--panel-2) 100%);
+    border:1px solid var(--line);border-radius:16px;padding:32px 26px;
+    box-shadow:0 20px 60px rgba(0,0,0,.45);
+    max-width:640px;margin:26px auto 0;text-align:center;
+  }
+  .book-card h2{margin:0 0 6px;font-size:22px}
+  .book-card .lead{margin:0 0 22px;color:var(--muted);font-size:14.5px}
+
+  /* Primary "Book Now" CTA — opens the Vagaro widget */
+  .book-btn{
+    display:inline-block;padding:16px 40px;border:0;border-radius:10px;cursor:pointer;
+    background:linear-gradient(180deg,var(--accent) 0%,var(--accent-2) 100%);
+    color:#04130c;font-weight:800;font-size:17px;letter-spacing:.3px;text-decoration:none;
+    transition:transform .05s,filter .15s;
+  }
+  .book-btn:hover{filter:brightness(1.05)}
+  .book-btn:active{transform:translateY(1px)}
+  .micro{font-size:12.5px;color:var(--muted);margin-top:16px}
+
+  /* Feature bullets */
+  .feats{display:flex;gap:26px;flex-wrap:wrap;justify-content:center;margin:34px auto 0;max-width:760px}
+  .feat{display:flex;gap:10px;align-items:center;font-size:14.5px;color:var(--muted)}
+  .feat svg{flex:0 0 auto}
+
+  /* The Vagaro embed itself */
+  .vagaro-embed{margin:36px auto 0;display:flex;justify-content:center}
+
+  /* Footer */
+  footer{border-top:1px solid var(--line);margin-top:56px;padding:26px 0 50px;color:var(--muted);font-size:12.5px;text-align:center}
+  footer a{color:var(--muted);text-decoration:underline;text-underline-offset:2px}
+
+  @media(max-width:560px){
+    h1{font-size:34px}
+    .book-card{padding:26px 18px}
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div class="brand">One Stop <span>Beauty Medspa</span></div>
+      <div class="badge">Online Booking</div>
+    </div>
+
+    <section class="hero">
+      <span class="eyebrow">Reserve Your Visit</span>
+      <h1>Book your appointment <em>in seconds</em></h1>
+      <p class="sub">Facials, injectables, laser, waxing and more — pick a service, choose a time, and you're set. Real-time availability, instant confirmation.</p>
+    </section>
+
+    <div class="book-card">
+      <h2>Ready when you are</h2>
+      <p class="lead">Tap below to see live openings and book your appointment. No phone tag, no waiting.</p>
+
+      <!-- Vagaro Booking Widget: renders the "Book Now" popup for One Stop Beauty Medspa -->
+      <div class="vagaro-embed">
+        <div class="vagaro" style="width:250px; padding:0; border:0; margin:0 auto; text-align:center; font-size:14px; color:#AAA;"><style>.vagaro a {font-size:14px; color:#AAA; text-decoration:none;}</style><a href="https://www.vagaro.com/pro/">Powered by Vagaro</a>&nbsp;<a href="https://www.vagaro.com/pro/salon-software">Salon Software</a>&nbsp;&amp;&nbsp;<a href="https://www.vagaro.com/pro/fitness-software">Fitness Software</a><script type="text/javascript" src="https://www.vagaro.com//resources/WidgetPopupLoader/OZqpE3SnCJOcT3qmV35y6RuRFXoSlXYO61Ctdg4tjxMG9pUxapkUcvCu7gevEhAJDXwOapcUcHcO61gRcHkO0?v=QrrIQyqUDLBrUDMJGifKc2spyZ3UGi2Iac6e4zvZCeuW#"></script></div>
+      </div>
+
+      <p class="micro">Secure booking powered by Vagaro. You'll get an email &amp; text confirmation.</p>
+    </div>
+
+    <div class="feats">
+      <div class="feat">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="#16c784" stroke-width="2"/><path d="M8 12l2.5 2.5L16 9" stroke="#16c784" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Instant confirmation
+      </div>
+      <div class="feat">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="#16c784" stroke-width="2"/><path d="M12 7v5l3 2" stroke="#16c784" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Real-time availability
+      </div>
+      <div class="feat">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="#16c784" stroke-width="2"/><path d="M9 12l2 2 4-4" stroke="#16c784" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Reschedule anytime
+      </div>
+    </div>
+
+    <footer>
+      <div>&copy; One Stop Beauty Medspa. All rights reserved.</div>
+    </footer>
+  </div>
+</body>
+</html>
