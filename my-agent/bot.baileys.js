@@ -84,6 +84,10 @@ let clientReady = false;
 // One-time setup (startup alert, briefing scheduler, outbox drain) must run
 // once — not again on every transient reconnect's "open" event.
 let startedOnce = false;
+// Guards against two overlapping reconnects: Baileys can emit "close" twice in
+// quick succession on a flaky connection, and without this each would spawn
+// its own socket + listener set, risking messages being handled twice.
+let reconnectScheduled = false;
 // Preferred proactive-send target: the chat of the most recent owner message.
 let lastOwnerJid = null;
 
@@ -249,9 +253,11 @@ function whisperExt(mimetype, fileName) {
   if (/wav/.test(mt)) return "wav";
   if (/webm/.test(mt)) return "webm";
   if (/flac/.test(mt)) return "flac";
+  if (/amr/.test(mt)) return "amr";
+  if (/3gp/.test(mt)) return "3gp";
   const m = (fileName || "").toLowerCase().match(/\.([a-z0-9]+)$/);
-  const ok = ["ogg", "oga", "mp3", "mpga", "mpeg", "m4a", "mp4", "wav", "webm", "flac"];
-  if (m && ok.includes(m[1])) return m[1] === "oga" ? "ogg" : m[1];
+  const ok = ["ogg", "oga", "mp3", "mpga", "mpeg", "m4a", "mp4", "wav", "webm", "flac", "amr", "3gp", "3gpp"];
+  if (m && ok.includes(m[1])) return m[1] === "oga" ? "ogg" : (m[1] === "3gpp" ? "3gp" : m[1]);
   return "ogg"; // sane default for WhatsApp audio
 }
 
@@ -665,9 +671,17 @@ async function start() {
       // Recoverable (network blip, restartRequired, timeout) — reconnect in
       // place. Unlike whatsapp-web.js's dead-Puppeteer disconnects, these are
       // routine and cheap, so we don't churn the whole pm2 process for them.
+      // Guard against a second "close" firing before this reconnect lands —
+      // without it, two overlapping start() calls would each open their own
+      // socket and could both end up handling (and replying to) the same
+      // incoming messages.
+      if (reconnectScheduled) return;
+      reconnectScheduled = true;
       setTimeout(() => start().catch((e) => {
         console.error("reconnect failed:", e.message);
         process.exit(1);
+      }).finally(() => {
+        reconnectScheduled = false;
       }), 2_000);
     }
   });

@@ -19,6 +19,7 @@ from zoneinfo import ZoneInfo
 from pathlib import Path
 
 from dotenv import load_dotenv
+from google.auth.exceptions import RefreshError, TransportError as GoogleTransportError
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
@@ -54,6 +55,21 @@ def _atomic_write_text(path: Path, text: str) -> None:
     tmp = path.with_suffix(path.suffix + f".tmp{os.getpid()}")
     tmp.write_text(text)
     tmp.replace(path)
+
+
+def _refresh_or_fallback(creds: Credentials) -> Credentials:
+    """Refresh `creds`, falling back to the already-known access token only on a
+    transient network hiccup. A RefreshError (revoked/expired refresh_token —
+    a permanent auth failure) must propagate instead of being swallowed: falling
+    back there would silently keep re-trying with a token that's already dead,
+    trading a clear "reconnect your Google account" error for a confusing 401
+    buried inside a later API call."""
+    try:
+        creds.refresh(Request())
+    except (GoogleTransportError, http_requests.exceptions.ConnectionError,
+             http_requests.exceptions.Timeout, TimeoutError, socket.timeout):
+        return creds
+    return creds
 
 
 SESSION_FILE = Path(__file__).parent / ".whatsapp_session"
@@ -545,13 +561,7 @@ def _gmail_creds(account: str = "business"):
     # automatic before-request refresh, which relies on the same property)
     # never fires. The token then silently goes stale after ~1h and every
     # call 401s forever. Refresh unconditionally instead of gating on it.
-    try:
-        creds.refresh(Request())
-    except Exception:
-        # A transient hiccup reaching Google's OAuth endpoint would otherwise
-        # fail this action outright even though the access_token we already
-        # have is almost certainly still valid — fall back to it.
-        return creds
+    creds = _refresh_or_fallback(creds)
     raw["access_token"] = creds.token
     _atomic_write_text(token_path, json.dumps(raw))
     return creds
@@ -580,13 +590,7 @@ def _gcal_creds(account: str = "business"):
     # See _gmail_creds: without `expiry` set, google-auth's `.expired` is
     # always False, so this refresh never fired and the token went stale
     # after ~1h. Refresh unconditionally instead of gating on `.expired`.
-    try:
-        creds.refresh(Request())
-    except Exception:
-        # A transient hiccup reaching Google's OAuth endpoint would otherwise
-        # fail this action outright even though the access_token we already
-        # have is almost certainly still valid — fall back to it.
-        return creds
+    creds = _refresh_or_fallback(creds)
     raw["access_token"] = creds.token
     if wrapped:
         existing = json.loads(token_path.read_text())
@@ -1140,13 +1144,7 @@ def _sheets_drive_creds():
     # See _gmail_creds: without `expiry` set, google-auth's `.expired` is
     # always False, so this refresh never fired and the token went stale
     # after ~1h. Refresh unconditionally instead of gating on `.expired`.
-    try:
-        creds.refresh(Request())
-    except Exception:
-        # A transient hiccup reaching Google's OAuth endpoint would otherwise
-        # fail this action outright even though the access_token we already
-        # have is almost certainly still valid — fall back to it.
-        return creds
+    creds = _refresh_or_fallback(creds)
     raw["access_token"] = creds.token
     _atomic_write_text(token_path, json.dumps(raw))
     return creds
