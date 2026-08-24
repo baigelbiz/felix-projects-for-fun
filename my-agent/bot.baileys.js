@@ -299,7 +299,9 @@ async function transcribeAudio(m, opts = {}) {
         console.log(`-> transcoded to ${fs.statSync(transcoded).size} bytes (16 kHz mono opus)`);
       } catch (te) {
         console.warn("ffmpeg transcode failed, falling back to original:", (te.message || "").slice(0, 200));
-        transcoded = null;
+        // Keep `transcoded` set: ffmpeg writes its output as it goes, so a
+        // mid-transcode failure or timeout leaves a partial file the cleanup
+        // below must still unlink.
         workFile = rawFile;
       }
     }
