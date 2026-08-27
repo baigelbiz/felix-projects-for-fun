@@ -567,8 +567,11 @@ function processQueue() {
       }
 
       if (err) {
+        // Logged only, not sent proactively here: the fallback reply below
+        // already delivers the same error to this jid via the normal reply
+        // path, and lastOwnerJid is set to this jid before the agent runs
+        // (see handleMessage), so a proactive send would just duplicate it.
         console.error("agent error (full):\n", stderr || err.message);
-        await sendProactiveMessage(`⚠️ Agent/tool failure: ${(stderr || err.message).slice(0, 500)}`).catch(() => {});
       }
 
       const raw = err
