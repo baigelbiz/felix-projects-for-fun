@@ -118,14 +118,40 @@ async function sendProactiveMessage(text) {
   if (lastOwnerJid) targets.push(lastOwnerJid);
   for (const id of ALLOWED_IDS) if (id !== lastOwnerJid) targets.push(id);
 
+  // withTimeout races a send against a timer but can't cancel the underlying
+  // Baileys call — the message has already reached WhatsApp by the time we
+  // give up waiting, so a "timed out" send that isn't actually hung keeps
+  // running in the background and can still succeed after we've already
+  // moved on to (and succeeded via) a fallback target, delivering the same
+  // message twice. `settled` is checked both before starting the next target
+  // and right after each await returns, closing the window where a still-
+  // pending earlier attempt's success lands while we're mid-await on a later
+  // one.
+  let settled = false;
   let lastErr;
   for (const jid of targets) {
+    if (settled) return;
+    let stillWaiting = true;
     try {
-      return await sendText(jid, body);
+      const sendPromise = sock.sendMessage(jid, { text: body });
+      sendPromise.then(() => {
+        if (settled) return;
+        settled = true;
+        if (!stillWaiting) {
+          console.warn("sendProactiveMessage: an earlier attempt succeeded after we'd already moved on to a fallback — possible duplicate delivery");
+        }
+      }, () => {});
+      await withTimeout(sendPromise, 45_000, "sendMessage");
+      stillWaiting = false;
+      if (settled) return;
+      settled = true;
+      return;
     } catch (e) {
+      stillWaiting = false;
       lastErr = e;
     }
   }
+  if (settled) return;
   throw lastErr || new Error("sendProactiveMessage: all delivery targets failed");
 }
 
@@ -626,9 +652,17 @@ async function start() {
     const { connection, qr, lastDisconnect } = u;
 
     if (qr) {
-      qrterm.generate(qr, { small: true });
-      await qrcode.toFile(path.join(__dirname, "qr.png"), qr, { width: 500 });
-      console.log("QR code written to qr.png — scan from WhatsApp > Settings > Linked Devices (use the bot's second number).");
+      try {
+        qrterm.generate(qr, { small: true });
+        await qrcode.toFile(path.join(__dirname, "qr.png"), qr, { width: 500 });
+        console.log("QR code written to qr.png — scan from WhatsApp > Settings > Linked Devices (use the bot's second number).");
+      } catch (e) {
+        // Don't let a QR-write failure (disk full, permissions) become an
+        // unhandled rejection — that would hit the global handler below and
+        // kill the process via process.exit(1), precisely while it's waiting
+        // to be linked and most needs to stay up to show a fresh QR.
+        console.error("failed to write qr.png:", e.message);
+      }
     }
 
     if (connection === "open") {
