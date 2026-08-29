@@ -1206,7 +1206,6 @@ def log_receipt(vendor: str, amount: float, date: str, category: str, notes: str
         media_body=media,
         fields="id, webViewLink",
     ).execute()
-    drive.permissions().create(fileId=uploaded["id"], body={"role": "reader", "type": "anyone"}).execute()
 
     sheets = build("sheets", "v4", credentials=creds)
     sheets.spreadsheets().values().append(
