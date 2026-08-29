@@ -264,6 +264,22 @@ async function downloadBuffer(m) {
 // gives a clear message instead of an opaque API error.
 const WHISPER_MAX_BYTES = 25 * 1024 * 1024;
 
+// WhatsApp media messages carry their size up front in `fileLength`, before
+// any bytes are fetched. Reject huge files on that metadata instead of
+// buffering the whole thing into RAM first (downloadBuffer has no size cap of
+// its own) — ffmpeg needs headroom above WHISPER_MAX_BYTES for long calls, but
+// an unbounded download is still a memory-exhaustion risk on a small VPS.
+const MAX_AUDIO_DOWNLOAD_BYTES = 200 * 1024 * 1024;
+// `fileLength` may come back as a plain number, a protobufjs Long, or a
+// string depending on the Baileys version, so normalize before comparing.
+function toNumber(x) {
+  if (x == null) return 0;
+  if (typeof x === "number") return x;
+  if (typeof x === "bigint") return Number(x);
+  if (typeof x.toNumber === "function") return x.toNumber();
+  return Number(x) || 0;
+}
+
 const HEBREW_BIAS =
   "שיחה עסקית בעברית על נדל\"ן. שמות של אנשים, מקומות וחברות באנגלית נשארים באנגלית, " +
   "למשל: Kenneth, North Carolina, San Diego, Close CRM, Shefa Homes.";
@@ -491,6 +507,14 @@ async function handleMessage(m) {
     const isPttNote = isVoice && (!!audioMsg?.ptt || (audioMsg?.seconds || 0) <= 180);
     const ext = whisperExt(audioMsg?.mimetype, audioMsg?.fileName);
     const caption = (content.documentMessage?.caption || "").trim();
+    const declaredBytes = toNumber(audioMsg?.fileLength);
+    if (declaredBytes > MAX_AUDIO_DOWNLOAD_BYTES) {
+      await reply(
+        `⚠️ That recording is too big (${(declaredBytes / (1024 * 1024)).toFixed(0)} MB) — ` +
+          `send a shorter or compressed clip.`
+      );
+      return;
+    }
     console.log(`-> transcribing ${isPttNote ? "voice note" : "audio recording"} (ext=${ext})...`);
     try {
       const transcript = await transcribeAudio(m, {
