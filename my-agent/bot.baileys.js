@@ -299,7 +299,7 @@ async function transcribeAudio(m, opts = {}) {
         await execFileP(
           "ffmpeg",
           ["-y", "-i", rawFile, "-ac", "1", "-ar", "16000", "-c:a", "libopus", "-b:a", "16k", transcoded],
-          { timeout: 180_000 }
+          { timeout: 180_000, maxBuffer: 10 * 1024 * 1024 }
         );
         workFile = transcoded;
         console.log(`-> transcoded to ${fs.statSync(transcoded).size} bytes (16 kHz mono opus)`);
@@ -364,9 +364,10 @@ async function handleMessage(m) {
   // voice note — accept documents whose mimetype/filename looks like audio.
   const isAudioDoc =
     type === "documentMessage" &&
-    /(audio|mpeg|mp3|mpga|m4a|mp4|ogg|opus|wav|webm|flac|aac|amr)/i.test(
-      `${content.documentMessage?.mimetype || ""} ${content.documentMessage?.fileName || ""}`
-    );
+    (/^audio\//i.test(content.documentMessage?.mimetype || "") ||
+      /\.(mp3|mpga|m4a|ogg|opus|wav|webm|flac|aac|amr|3gp)$/i.test(
+        (content.documentMessage?.fileName || "").trim()
+      ));
   const isImage = type === "imageMessage";
   const isLocation = type === "locationMessage";
   const isText = type === "conversation" || type === "extendedTextMessage";
@@ -458,7 +459,10 @@ async function handleMessage(m) {
     // process: transcribed, then handled per the caption you send with it
     // (or summarized into bullets by default).
     const audioMsg = isVoice ? content.audioMessage : content.documentMessage;
-    const isPttNote = isVoice && audioMsg?.ptt;
+    // WhatsApp's `ptt` flag is not reliably set on forwarded voice notes (it can
+    // arrive false even though the sender meant a quick memo). Fall back to
+    // duration: recorded phone calls run long, quick voice notes rarely do.
+    const isPttNote = isVoice && (!!audioMsg?.ptt || (audioMsg?.seconds || 0) <= 180);
     const ext = whisperExt(audioMsg?.mimetype, audioMsg?.fileName);
     const caption = (content.documentMessage?.caption || "").trim();
     console.log(`-> transcribing ${isPttNote ? "voice note" : "audio recording"} (ext=${ext})...`);
