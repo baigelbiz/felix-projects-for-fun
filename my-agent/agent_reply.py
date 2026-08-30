@@ -19,6 +19,7 @@ from zoneinfo import ZoneInfo
 from pathlib import Path
 
 from dotenv import load_dotenv
+from google.auth.exceptions import RefreshError
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
@@ -526,6 +527,29 @@ TOOLS = [
 ]
 
 
+def _refresh_google_creds(creds) -> bool:
+    """Refresh `creds` in place, raising clearly if the refresh itself is dead.
+
+    Returns True on success, False on a transient failure (network blip
+    reaching Google's OAuth endpoint) — the caller should then keep using the
+    still-likely-valid old access_token rather than fail the action outright.
+    A RefreshError (invalid_grant: the refresh_token was revoked, expired, or
+    the OAuth consent screen is in "Testing" mode and auto-expired it after 7
+    days) means the stored token is permanently dead, not transiently
+    unreachable — swallowing that the same way would silently 401 forever
+    instead of telling anyone the account needs re-linking."""
+    try:
+        creds.refresh(Request())
+        return True
+    except RefreshError as e:
+        raise RuntimeError(
+            "Google account needs re-authentication — the stored refresh token "
+            f"was rejected ({e}). Re-run the OAuth flow to generate a fresh token file."
+        ) from e
+    except Exception:
+        return False
+
+
 def _gmail_creds(account: str = "business"):
     token_path = CREDS_DIR / ("gmail_personal_token.json" if account == "personal" else "gmail_token.json")
     client_path = CREDS_DIR / "gcp-oauth.keys.json"
@@ -545,15 +569,9 @@ def _gmail_creds(account: str = "business"):
     # automatic before-request refresh, which relies on the same property)
     # never fires. The token then silently goes stale after ~1h and every
     # call 401s forever. Refresh unconditionally instead of gating on it.
-    try:
-        creds.refresh(Request())
-    except Exception:
-        # A transient hiccup reaching Google's OAuth endpoint would otherwise
-        # fail this action outright even though the access_token we already
-        # have is almost certainly still valid — fall back to it.
-        return creds
-    raw["access_token"] = creds.token
-    _atomic_write_text(token_path, json.dumps(raw))
+    if _refresh_google_creds(creds):
+        raw["access_token"] = creds.token
+        _atomic_write_text(token_path, json.dumps(raw))
     return creds
 
 
@@ -580,20 +598,14 @@ def _gcal_creds(account: str = "business"):
     # See _gmail_creds: without `expiry` set, google-auth's `.expired` is
     # always False, so this refresh never fired and the token went stale
     # after ~1h. Refresh unconditionally instead of gating on `.expired`.
-    try:
-        creds.refresh(Request())
-    except Exception:
-        # A transient hiccup reaching Google's OAuth endpoint would otherwise
-        # fail this action outright even though the access_token we already
-        # have is almost certainly still valid — fall back to it.
-        return creds
-    raw["access_token"] = creds.token
-    if wrapped:
-        existing = json.loads(token_path.read_text())
-        existing["normal"] = raw
-        _atomic_write_text(token_path, json.dumps(existing))
-    else:
-        _atomic_write_text(token_path, json.dumps(raw))
+    if _refresh_google_creds(creds):
+        raw["access_token"] = creds.token
+        if wrapped:
+            existing = json.loads(token_path.read_text())
+            existing["normal"] = raw
+            _atomic_write_text(token_path, json.dumps(existing))
+        else:
+            _atomic_write_text(token_path, json.dumps(raw))
     return creds
 
 
@@ -777,6 +789,17 @@ def _hour_24(hour: int, minute: int, meridiem: str, when: str) -> int:
     return hour
 
 
+def _add_real_duration(moment: datetime, delta: timedelta, tz: ZoneInfo) -> datetime:
+    """Add a wall-clock duration ("in 2 hours") as real elapsed time.
+
+    Adding a timedelta directly to a zoneinfo-aware datetime does naive field
+    arithmetic and does not renormalize across a DST transition, so "in 2
+    hours" requested right around Israel's DST changeover would land an hour
+    early or late. Route through UTC, where a timedelta always means real
+    elapsed time, then convert back."""
+    return (moment.astimezone(timezone.utc) + delta).astimezone(tz)
+
+
 def _parse_reminder_when(when: str, tz_name: str = "Asia/Jerusalem") -> datetime:
     tz = ZoneInfo(tz_name)
     now = datetime.now(tz)
@@ -800,9 +823,9 @@ def _parse_reminder_when(when: str, tz_name: str = "Asia/Jerusalem") -> datetime
         amount = _natural_number(relative.group(1))
         unit = relative.group(2)
         if unit in {"minute", "minutes", "min", "דקה", "דקות"}:
-            return now + timedelta(minutes=amount)
+            return _add_real_duration(now, timedelta(minutes=amount), tz)
         if unit in {"hour", "hours", "שעה", "שעות"}:
-            return now + timedelta(hours=amount)
+            return _add_real_duration(now, timedelta(hours=amount), tz)
         if unit in {"week", "weeks", "שבוע", "שבועות"}:
             date_base = now + timedelta(weeks=amount)
         else:
@@ -819,8 +842,17 @@ def _parse_reminder_when(when: str, tz_name: str = "Asia/Jerusalem") -> datetime
         return date_base
 
     date_base = now
-    if "tomorrow" in lowered or "מחר" in lowered:
+    future_day_word = False
+    # Check the two-day phrase first — "day after tomorrow" contains
+    # "tomorrow" and "מחרתיים" (day after tomorrow) contains "מחר" (tomorrow)
+    # as a prefix, so a bare "tomorrow"/"מחר" substring check would silently
+    # parse both as +1 day instead of +2.
+    if "day after tomorrow" in lowered or "מחרתיים" in lowered:
+        date_base = now + timedelta(days=2)
+        future_day_word = True
+    elif "tomorrow" in lowered or "מחר" in lowered:
         date_base = now + timedelta(days=1)
+        future_day_word = True
 
     # The keyword prefix must actually be present (or the number must carry its
     # own unambiguous time marker: am/pm or a colon) — otherwise this matches
@@ -836,7 +868,7 @@ def _parse_reminder_when(when: str, tz_name: str = "Asia/Jerusalem") -> datetime
         minute = int(time_match.group(2) or 0)
         hour = _hour_24(hour, minute, time_match.group(3), when)
         candidate = date_base.replace(hour=hour, minute=minute, second=0, microsecond=0)
-        if "tomorrow" not in lowered and "מחר" not in lowered and candidate <= now:
+        if not future_day_word and candidate <= now:
             candidate += timedelta(days=1)
         return candidate
 
@@ -1140,15 +1172,9 @@ def _sheets_drive_creds():
     # See _gmail_creds: without `expiry` set, google-auth's `.expired` is
     # always False, so this refresh never fired and the token went stale
     # after ~1h. Refresh unconditionally instead of gating on `.expired`.
-    try:
-        creds.refresh(Request())
-    except Exception:
-        # A transient hiccup reaching Google's OAuth endpoint would otherwise
-        # fail this action outright even though the access_token we already
-        # have is almost certainly still valid — fall back to it.
-        return creds
-    raw["access_token"] = creds.token
-    _atomic_write_text(token_path, json.dumps(raw))
+    if _refresh_google_creds(creds):
+        raw["access_token"] = creds.token
+        _atomic_write_text(token_path, json.dumps(raw))
     return creds
 
 
@@ -1314,6 +1340,7 @@ def run(prompt: str, history: list, image_path: str = None) -> tuple[str, list]:
             if function_calls:
                 contents.append(response.candidates[0].content)
                 photo_result = None
+                response_parts = []
                 for fc in function_calls:
                     args = dict(fc.args or {})
                     try:
@@ -1343,13 +1370,19 @@ def run(prompt: str, history: list, image_path: str = None) -> tuple[str, list]:
                             response_data = {"result": "Not sent — only one photo can be sent per reply."}
                     else:
                         response_data = {"result": result}
-                    # Gemini requires Content.role to be "user" or "model" — "tool" is
-                    # rejected by the API with an "invalid role" error, which broke every
-                    # tool-calling turn (calendar, CRM, memory, search, receipts, images...).
-                    contents.append(genai_types.Content(
-                        role="user",
-                        parts=[genai_types.Part.from_function_response(name=fc.name, response=response_data)],
-                    ))
+                    response_parts.append(
+                        genai_types.Part.from_function_response(name=fc.name, response=response_data)
+                    )
+                # Gemini requires Content.role to be "user" or "model" — "tool" is
+                # rejected by the API with an "invalid role" error, which broke every
+                # tool-calling turn (calendar, CRM, memory, search, receipts, images...).
+                # All function responses for this round go in a single Content, matching
+                # the google-genai SDK's own reference automatic-function-calling
+                # implementation — a separate "user" Content per call would put two
+                # "user" turns back to back with no "model" turn between them when the
+                # model requests multiple tool calls in one round (e.g. "remind me to
+                # call John and also look up his Close lead"), which the API may reject.
+                contents.append(genai_types.Content(role="user", parts=response_parts))
                 if photo_result is not None:
                     # Store a clean description in history, not the raw "PHOTO:<tmp-path>"
                     # marker — bot.js deletes that temp file right after sending, and the
