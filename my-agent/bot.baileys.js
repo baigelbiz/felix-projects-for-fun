@@ -84,6 +84,10 @@ let clientReady = false;
 // One-time setup (startup alert, briefing scheduler, outbox drain) must run
 // once — not again on every transient reconnect's "open" event.
 let startedOnce = false;
+// Guards against two overlapping reconnects: Baileys can emit "close" twice in
+// quick succession on a flaky connection, and without this each would spawn
+// its own socket + listener set, risking messages being handled twice.
+let reconnectScheduled = false;
 // Preferred proactive-send target: the chat of the most recent owner message.
 let lastOwnerJid = null;
 
@@ -118,14 +122,40 @@ async function sendProactiveMessage(text) {
   if (lastOwnerJid) targets.push(lastOwnerJid);
   for (const id of ALLOWED_IDS) if (id !== lastOwnerJid) targets.push(id);
 
+  // withTimeout races a send against a timer but can't cancel the underlying
+  // Baileys call — the message has already reached WhatsApp by the time we
+  // give up waiting, so a "timed out" send that isn't actually hung keeps
+  // running in the background and can still succeed after we've already
+  // moved on to (and succeeded via) a fallback target, delivering the same
+  // message twice. `settled` is checked both before starting the next target
+  // and right after each await returns, closing the window where a still-
+  // pending earlier attempt's success lands while we're mid-await on a later
+  // one.
+  let settled = false;
   let lastErr;
   for (const jid of targets) {
+    if (settled) return;
+    let stillWaiting = true;
     try {
-      return await sendText(jid, body);
+      const sendPromise = sock.sendMessage(jid, { text: body });
+      sendPromise.then(() => {
+        if (settled) return;
+        settled = true;
+        if (!stillWaiting) {
+          console.warn("sendProactiveMessage: an earlier attempt succeeded after we'd already moved on to a fallback — possible duplicate delivery");
+        }
+      }, () => {});
+      await withTimeout(sendPromise, 45_000, "sendMessage");
+      stillWaiting = false;
+      if (settled) return;
+      settled = true;
+      return;
     } catch (e) {
+      stillWaiting = false;
       lastErr = e;
     }
   }
+  if (settled) return;
   throw lastErr || new Error("sendProactiveMessage: all delivery targets failed");
 }
 
@@ -234,6 +264,22 @@ async function downloadBuffer(m) {
 // gives a clear message instead of an opaque API error.
 const WHISPER_MAX_BYTES = 25 * 1024 * 1024;
 
+// WhatsApp media messages carry their size up front in `fileLength`, before
+// any bytes are fetched. Reject huge files on that metadata instead of
+// buffering the whole thing into RAM first (downloadBuffer has no size cap of
+// its own) — ffmpeg needs headroom above WHISPER_MAX_BYTES for long calls, but
+// an unbounded download is still a memory-exhaustion risk on a small VPS.
+const MAX_AUDIO_DOWNLOAD_BYTES = 200 * 1024 * 1024;
+// `fileLength` may come back as a plain number, a protobufjs Long, or a
+// string depending on the Baileys version, so normalize before comparing.
+function toNumber(x) {
+  if (x == null) return 0;
+  if (typeof x === "number") return x;
+  if (typeof x === "bigint") return Number(x);
+  if (typeof x.toNumber === "function") return x.toNumber();
+  return Number(x) || 0;
+}
+
 const HEBREW_BIAS =
   "שיחה עסקית בעברית על נדל\"ן. שמות של אנשים, מקומות וחברות באנגלית נשארים באנגלית, " +
   "למשל: Kenneth, North Carolina, San Diego, Close CRM, Shefa Homes.";
@@ -249,9 +295,11 @@ function whisperExt(mimetype, fileName) {
   if (/wav/.test(mt)) return "wav";
   if (/webm/.test(mt)) return "webm";
   if (/flac/.test(mt)) return "flac";
+  if (/amr/.test(mt)) return "amr";
+  if (/3gp/.test(mt)) return "3gp";
   const m = (fileName || "").toLowerCase().match(/\.([a-z0-9]+)$/);
-  const ok = ["ogg", "oga", "mp3", "mpga", "mpeg", "m4a", "mp4", "wav", "webm", "flac"];
-  if (m && ok.includes(m[1])) return m[1] === "oga" ? "ogg" : m[1];
+  const ok = ["ogg", "oga", "mp3", "mpga", "mpeg", "m4a", "mp4", "wav", "webm", "flac", "amr", "3gp", "3gpp"];
+  if (m && ok.includes(m[1])) return m[1] === "oga" ? "ogg" : (m[1] === "3gpp" ? "3gp" : m[1]);
   return "ogg"; // sane default for WhatsApp audio
 }
 
@@ -293,13 +341,15 @@ async function transcribeAudio(m, opts = {}) {
         await execFileP(
           "ffmpeg",
           ["-y", "-i", rawFile, "-ac", "1", "-ar", "16000", "-c:a", "libopus", "-b:a", "16k", transcoded],
-          { timeout: 180_000 }
+          { timeout: 180_000, maxBuffer: 10 * 1024 * 1024 }
         );
         workFile = transcoded;
         console.log(`-> transcoded to ${fs.statSync(transcoded).size} bytes (16 kHz mono opus)`);
       } catch (te) {
         console.warn("ffmpeg transcode failed, falling back to original:", (te.message || "").slice(0, 200));
-        transcoded = null;
+        // Keep `transcoded` set: ffmpeg writes its output as it goes, so a
+        // mid-transcode failure or timeout leaves a partial file the cleanup
+        // below must still unlink.
         workFile = rawFile;
       }
     }
@@ -356,9 +406,10 @@ async function handleMessage(m) {
   // voice note — accept documents whose mimetype/filename looks like audio.
   const isAudioDoc =
     type === "documentMessage" &&
-    /(audio|mpeg|mp3|mpga|m4a|mp4|ogg|opus|wav|webm|flac|aac|amr)/i.test(
-      `${content.documentMessage?.mimetype || ""} ${content.documentMessage?.fileName || ""}`
-    );
+    (/^audio\//i.test(content.documentMessage?.mimetype || "") ||
+      /\.(mp3|mpga|m4a|ogg|opus|wav|webm|flac|aac|amr|3gp)$/i.test(
+        (content.documentMessage?.fileName || "").trim()
+      ));
   const isImage = type === "imageMessage";
   const isLocation = type === "locationMessage";
   const isText = type === "conversation" || type === "extendedTextMessage";
@@ -450,9 +501,20 @@ async function handleMessage(m) {
     // process: transcribed, then handled per the caption you send with it
     // (or summarized into bullets by default).
     const audioMsg = isVoice ? content.audioMessage : content.documentMessage;
-    const isPttNote = isVoice && audioMsg?.ptt;
+    // WhatsApp's `ptt` flag is not reliably set on forwarded voice notes (it can
+    // arrive false even though the sender meant a quick memo). Fall back to
+    // duration: recorded phone calls run long, quick voice notes rarely do.
+    const isPttNote = isVoice && (!!audioMsg?.ptt || (audioMsg?.seconds || 0) <= 180);
     const ext = whisperExt(audioMsg?.mimetype, audioMsg?.fileName);
     const caption = (content.documentMessage?.caption || "").trim();
+    const declaredBytes = toNumber(audioMsg?.fileLength);
+    if (declaredBytes > MAX_AUDIO_DOWNLOAD_BYTES) {
+      await reply(
+        `⚠️ That recording is too big (${(declaredBytes / (1024 * 1024)).toFixed(0)} MB) — ` +
+          `send a shorter or compressed clip.`
+      );
+      return;
+    }
     console.log(`-> transcribing ${isPttNote ? "voice note" : "audio recording"} (ext=${ext})...`);
     try {
       const transcript = await transcribeAudio(m, {
@@ -567,8 +629,11 @@ function processQueue() {
       }
 
       if (err) {
+        // Logged only, not sent proactively here: the fallback reply below
+        // already delivers the same error to this jid via the normal reply
+        // path, and lastOwnerJid is set to this jid before the agent runs
+        // (see handleMessage), so a proactive send would just duplicate it.
         console.error("agent error (full):\n", stderr || err.message);
-        await sendProactiveMessage(`⚠️ Agent/tool failure: ${(stderr || err.message).slice(0, 500)}`).catch(() => {});
       }
 
       const raw = err
@@ -626,9 +691,17 @@ async function start() {
     const { connection, qr, lastDisconnect } = u;
 
     if (qr) {
-      qrterm.generate(qr, { small: true });
-      await qrcode.toFile(path.join(__dirname, "qr.png"), qr, { width: 500 });
-      console.log("QR code written to qr.png — scan from WhatsApp > Settings > Linked Devices (use the bot's second number).");
+      try {
+        qrterm.generate(qr, { small: true });
+        await qrcode.toFile(path.join(__dirname, "qr.png"), qr, { width: 500 });
+        console.log("QR code written to qr.png — scan from WhatsApp > Settings > Linked Devices (use the bot's second number).");
+      } catch (e) {
+        // Don't let a QR-write failure (disk full, permissions) become an
+        // unhandled rejection — that would hit the global handler below and
+        // kill the process via process.exit(1), precisely while it's waiting
+        // to be linked and most needs to stay up to show a fresh QR.
+        console.error("failed to write qr.png:", e.message);
+      }
     }
 
     if (connection === "open") {
@@ -665,9 +738,17 @@ async function start() {
       // Recoverable (network blip, restartRequired, timeout) — reconnect in
       // place. Unlike whatsapp-web.js's dead-Puppeteer disconnects, these are
       // routine and cheap, so we don't churn the whole pm2 process for them.
+      // Guard against a second "close" firing before this reconnect lands —
+      // without it, two overlapping start() calls would each open their own
+      // socket and could both end up handling (and replying to) the same
+      // incoming messages.
+      if (reconnectScheduled) return;
+      reconnectScheduled = true;
       setTimeout(() => start().catch((e) => {
         console.error("reconnect failed:", e.message);
         process.exit(1);
+      }).finally(() => {
+        reconnectScheduled = false;
       }), 2_000);
     }
   });
