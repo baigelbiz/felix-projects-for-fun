@@ -21,29 +21,62 @@ instead, set `ANTHROPIC_API_KEY` (get one at https://console.anthropic.com/).
 ```
 
 The WhatsApp bridge is `bot.js`; it uses `.env`, the local `.venv`, and the
-WhatsApp session directory. For the production server, deploy the current
-`main` branch with:
-
-```sh
-./deploy.sh
-```
+WhatsApp session directory.
 
 The bot sends a 07:00 Israel-time briefing, alerts the WhatsApp owner when it
 restarts or encounters an agent failure, and keeps long-term assistant memory
 in `.assistant_memory.json`.
 
-## Deploying from a Claude Code on the web session
+## Deploying
 
-Claude Code on the web sessions **cannot SSH to the production server**: the
-sandbox only permits outbound HTTP/HTTPS through an inspecting proxy (ports
-80/443), and that proxy rejects the SSH protocol — including SSH re-hosted on
-port 443 (it answers `HTTP/1.1 400 Bad Request`). Port 22 is blocked outright.
-So a web session can't reach `root@138.199.159.146` directly, no matter how the
-environment's network access is configured.
+**Deploys are automatic.** Every push to `main` that touches `my-agent/**`
+triggers `.github/workflows/deploy-whatsapp-bot.yml`, which runs on a
+self-hosted GitHub Actions runner living on the production server itself and
+does the same pull/install/restart sequence `deploy.sh` always did — no SSH
+required, since the runner only makes outbound connections to GitHub. This is
+also why Claude Code on the web sessions can merge a fix and have it reach
+production without ever needing server access: the sandbox's egress proxy
+only carries HTTP/HTTPS on ports 80/443 (SSH is rejected outright, even
+re-hosted on 443), so a direct `ssh root@138.199.159.146` from a web session
+was never going to work — this workflow is the fix for that, not a
+workaround of it.
 
-Deploy instead from a machine with real SSH access (e.g. Felix's Mac) by
-running `./deploy.sh`, or by pulling on the server itself
-(`cd /root/repo-update/my-agent && git pull && ...`).
+Manual/fallback options still work if needed:
+
+```sh
+./deploy.sh
+```
+
+from a machine with real SSH access (e.g. Felix's Mac), or pulling directly
+on the server (`cd /root/repo-update/my-agent && git pull && ...`).
+
+### One-time runner setup (do this once, from a machine with SSH access)
+
+1. GitHub repo → Settings → Actions → Runners → New self-hosted runner →
+   Linux x64. Copy the `config.sh --url ... --token ...` command it gives you
+   (the token is short-lived, generate a fresh one each time you do this).
+2. On the server, as the same user that runs pm2 (`root`, matching the rest of
+   this stack):
+   ```sh
+   mkdir -p /root/actions-runner && cd /root/actions-runner
+   curl -o actions-runner.tar.gz -L <the URL from step 1>
+   tar xzf actions-runner.tar.gz
+   ./config.sh --url https://github.com/baigelbiz/felix-projects-for-fun \
+     --token <TOKEN> --labels whatsapp-bot --unattended
+   sudo ./svc.sh install
+   sudo ./svc.sh start
+   ```
+   `svc.sh install` registers it as a systemd service so it survives reboots
+   and restarts on crash — otherwise a server reboot silently kills the
+   listener and deploys stop reaching production without any error, the same
+   failure mode this whole change was meant to eliminate.
+3. Confirm it shows "Idle" under Settings → Actions → Runners.
+
+**Security note:** this repo is public. The workflow triggers only on `push`
+to `main` (requires write access) and `workflow_dispatch` — never on
+`pull_request`/`pull_request_target`. Do not add either of those triggers to
+`deploy-whatsapp-bot.yml`; on a public repo with a self-hosted runner, that
+would let anyone who opens a PR run arbitrary code on the production server.
 
 ## WhatsApp transport: migrating from whatsapp-web.js to Baileys
 

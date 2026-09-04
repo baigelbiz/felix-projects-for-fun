@@ -1,0 +1,45 @@
+name: Deploy WhatsApp bot
+
+# Runs on the self-hosted runner living on the production VPS itself, so no
+# inbound SSH is ever needed to deploy — only outbound HTTPS from the runner
+# to GitHub. See my-agent/README.md for the one-time runner setup.
+#
+# SECURITY: this repo is public. Do NOT add a `pull_request` or
+# `pull_request_target` trigger to this workflow — that would let anyone who
+# opens a PR run code on the production server via a self-hosted runner.
+# `push` to main requires write access, same trust boundary deploy.sh always
+# had (whatever's on main gets deployed).
+on:
+  push:
+    branches: [main]
+    paths:
+      - "my-agent/**"
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-whatsapp-bot
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, whatsapp-bot]
+    timeout-minutes: 10
+    steps:
+      - name: Pull latest main and restart the bot
+        env:
+          REMOTE_APP: /root/my-agent
+          REMOTE_REPO: /root/repo-update/my-agent
+        run: |
+          set -euo pipefail
+          cd "$REMOTE_REPO"
+          git pull --ff-only origin main
+          cp agent_reply.py bot.js deploy.sh requirements.txt package.json package-lock.json smoke_test.py check-bot.sh "$REMOTE_APP"/
+          chmod +x "$REMOTE_APP"/deploy.sh
+          cd "$REMOTE_APP"
+          .venv/bin/pip install -q -r requirements.txt
+          npm install --omit=dev --no-audit --no-fund
+          .venv/bin/python -m py_compile agent_reply.py
+          node --check bot.js
+          .venv/bin/python smoke_test.py
+          pm2 restart whatsapp-agent --update-env
+          pm2 describe whatsapp-agent | sed -n '1,35p'
