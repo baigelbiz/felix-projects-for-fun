@@ -1401,14 +1401,17 @@ def run(prompt: str, history: list, image_path: str = None) -> tuple[str, list]:
 
         # Hit the round cap: side-effecting tool calls above (leads created, events
         # booked, etc.) already happened against real APIs even though we're giving
-        # up here, so record that rather than silently dropping all trace of them.
+        # up here, so tell the user that (not just a bare "stuck in a loop") and
+        # record the same text in history rather than silently dropping all trace
+        # of them.
+        stuck_reply = ("Sorry, I got stuck in a loop after several tool calls — "
+                        "some actions above may have already been taken. Please "
+                        "check before repeating the request.")
         history = history + [
             {"role": "user", "text": prompt},
-            {"role": "model", "text": "Sorry, I got stuck in a loop after several tool calls — "
-                                       "some actions above may have already been taken. Please "
-                                       "check before repeating the request."},
+            {"role": "model", "text": stuck_reply},
         ]
-        return "Sorry, I got stuck in a loop.", history
+        return stuck_reply, history
     except Exception as e:
         # A transient Gemini failure (rate limit, 5xx, safety-filtered/empty
         # response, network blip) must not crash the process — that would deny
