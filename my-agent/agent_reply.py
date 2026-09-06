@@ -874,6 +874,14 @@ def _parse_reminder_when(when: str, tz_name: str = "Asia/Jerusalem") -> datetime
             candidate += timedelta(days=1)
         return candidate
 
+    # A recognized day word ("tomorrow"/"מחר"/"day after tomorrow"/"מחרתיים")
+    # with no explicit clock time is still a fully understood request — default
+    # to the current time on that future day, same as the "in N days" relative
+    # path above. Without this, "remind me the day after tomorrow" raised
+    # "could not understand" even though the day was parsed correctly.
+    if future_day_word:
+        return date_base
+
     raise ValueError(
         f"Could not understand reminder time '{when}'. Use a relative time like 'in 5 minutes' or an ISO datetime."
     )
