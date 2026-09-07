@@ -835,7 +835,10 @@ def _parse_reminder_when(when: str, tz_name: str = "Asia/Jerusalem") -> datetime
         # A trailing clock time ("in 2 days at 5pm") would otherwise be silently
         # dropped by returning immediately here, leaving the reminder at today's
         # current clock time N days/weeks out instead of the requested hour.
-        trailing_time = re.search(r"(?:at|ב|בשעה)\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?", lowered[relative.end():])
+        # "-" is allowed after the Hebrew prefix because "ב-9"/"ב-14:30" (hyphen,
+        # no space) is the everyday way to write a time in Hebrew — without it,
+        # only the colon or am/pm forms matched and a bare "ב-9" fell through.
+        trailing_time = re.search(r"(?:at|ב|בשעה)[\s-]*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?", lowered[relative.end():])
         if trailing_time:
             hour = int(trailing_time.group(1))
             minute = int(trailing_time.group(2) or 0)
@@ -860,8 +863,11 @@ def _parse_reminder_when(when: str, tz_name: str = "Asia/Jerusalem") -> datetime
     # own unambiguous time marker: am/pm or a colon) — otherwise this matches
     # the first stray 1-2 digit number anywhere in the text (e.g. "apartment
     # 4B") and silently creates a reminder at the wrong time.
+    # "-" is allowed after the Hebrew prefix so "ב-9" (hyphen, no space) — the
+    # everyday way to write a time in Hebrew — matches; before this a bare
+    # "ב-9" with no colon/am-pm fell through to the raise below.
     time_match = (
-        re.search(r"(?:at|ב|בשעה)\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?", lowered)
+        re.search(r"(?:at|ב|בשעה)[\s-]*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?", lowered)
         or re.search(r"(\d{1,2})(?::(\d{2}))?\s*(am|pm)", lowered)
         or re.search(r"(\d{1,2}):(\d{2})\s*(am|pm)?", lowered)
     )
@@ -873,6 +879,14 @@ def _parse_reminder_when(when: str, tz_name: str = "Asia/Jerusalem") -> datetime
         if not future_day_word and candidate <= now:
             candidate += timedelta(days=1)
         return candidate
+
+    if future_day_word:
+        # A bare day word with no explicit clock time ("tomorrow", "מחר",
+        # "day after tomorrow"/"מחרתיים") is still a clear, actionable request —
+        # default to a sensible morning time instead of raising, which forced
+        # an error reply and contradicted the system prompt's "don't ask for
+        # date/time when the user gave a relative time" rule.
+        return date_base.replace(hour=9, minute=0, second=0, microsecond=0)
 
     raise ValueError(
         f"Could not understand reminder time '{when}'. Use a relative time like 'in 5 minutes' or an ISO datetime."
