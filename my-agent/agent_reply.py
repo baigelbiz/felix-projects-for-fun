@@ -835,7 +835,7 @@ def _parse_reminder_when(when: str, tz_name: str = "Asia/Jerusalem") -> datetime
         # A trailing clock time ("in 2 days at 5pm") would otherwise be silently
         # dropped by returning immediately here, leaving the reminder at today's
         # current clock time N days/weeks out instead of the requested hour.
-        trailing_time = re.search(r"(?:at|ב|בשעה)\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?", lowered[relative.end():])
+        trailing_time = re.search(r"(?:\bat|\bבשעה|\bב)\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?", lowered[relative.end():])
         if trailing_time:
             hour = int(trailing_time.group(1))
             minute = int(trailing_time.group(2) or 0)
@@ -859,9 +859,11 @@ def _parse_reminder_when(when: str, tz_name: str = "Asia/Jerusalem") -> datetime
     # The keyword prefix must actually be present (or the number must carry its
     # own unambiguous time marker: am/pm or a colon) — otherwise this matches
     # the first stray 1-2 digit number anywhere in the text (e.g. "apartment
-    # 4B") and silently creates a reminder at the wrong time.
+    # 4B") and silently creates a reminder at the wrong time. The leading \b
+    # is required too: without it "at"/"ב" also match mid-word ("th-AT 5",
+    # "חל-ב 2"), silently misfiring on ordinary text that never asked for a time.
     time_match = (
-        re.search(r"(?:at|ב|בשעה)\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?", lowered)
+        re.search(r"(?:\bat|\bבשעה|\bב)\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?", lowered)
         or re.search(r"(\d{1,2})(?::(\d{2}))?\s*(am|pm)", lowered)
         or re.search(r"(\d{1,2}):(\d{2})\s*(am|pm)?", lowered)
     )
@@ -941,7 +943,8 @@ def calendar_create_event(summary: str, start: str, end: str, timezone: str = "A
 def calendar_create_reminder(summary: str, when: str, duration_minutes: int = 15, timezone: str = "Asia/Jerusalem", account: str = "business") -> str:
     start_dt = _parse_reminder_when(when, timezone)
     duration = max(5, min(int(duration_minutes or 15), 240))
-    end_dt = start_dt + timedelta(minutes=duration)
+    # Real elapsed time, not naive field arithmetic — see _add_real_duration.
+    end_dt = _add_real_duration(start_dt, timedelta(minutes=duration), ZoneInfo(timezone))
     clean_summary = summary.strip()
     if not clean_summary.lower().startswith(("reminder:", "תזכורת:")):
         clean_summary = f"Reminder: {clean_summary}"
