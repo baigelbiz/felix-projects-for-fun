@@ -88,6 +88,10 @@ let startedOnce = false;
 // quick succession on a flaky connection, and without this each would spawn
 // its own socket + listener set, risking messages being handled twice.
 let reconnectScheduled = false;
+// Counts consecutive "close" events without an intervening successful "open",
+// so a persistent problem (bad proxy, network outage) backs off instead of
+// retrying every 2s forever — reset to 0 as soon as the connection opens.
+let reconnectAttempts = 0;
 // Preferred proactive-send target: the chat of the most recent owner message.
 let lastOwnerJid = null;
 
@@ -251,12 +255,21 @@ function startOutboxDrain() {
 
 // Baileys returns media as a Buffer directly (no base64 round-trip, no browser
 // evaluate — this is the whole reason for the migration).
+//
+// Raced against a timeout: unlike every other outbound call in this file
+// (sendText, sendMessage, execFile), a stalled WhatsApp CDN response here had
+// nothing to bound it — the caller's `await` would hang forever, silently
+// dropping the message with no reply and no error logged.
 async function downloadBuffer(m) {
-  return downloadMediaMessage(
-    m,
-    "buffer",
-    {},
-    { logger: pino({ level: "silent" }), reuploadRequest: sock.updateMediaMessage }
+  return withTimeout(
+    downloadMediaMessage(
+      m,
+      "buffer",
+      {},
+      { logger: pino({ level: "silent" }), reuploadRequest: sock.updateMediaMessage }
+    ),
+    120_000,
+    "downloadMediaMessage"
   );
 }
 
@@ -270,6 +283,10 @@ const WHISPER_MAX_BYTES = 25 * 1024 * 1024;
 // its own) — ffmpeg needs headroom above WHISPER_MAX_BYTES for long calls, but
 // an unbounded download is still a memory-exhaustion risk on a small VPS.
 const MAX_AUDIO_DOWNLOAD_BYTES = 200 * 1024 * 1024;
+// Same reasoning applies to images: check the declared size before buffering
+// into RAM. Images are never legitimately huge like a phone-call recording,
+// so this cap is much tighter.
+const MAX_IMAGE_DOWNLOAD_BYTES = 20 * 1024 * 1024;
 // `fileLength` may come back as a plain number, a protobufjs Long, or a
 // string depending on the Baileys version, so normalize before comparing.
 function toNumber(x) {
@@ -479,11 +496,16 @@ async function handleMessage(m) {
   if (isText && /^@s\s+/i.test(body)) {
     const note = body.replace(/^@s\s+/i, "").trim();
     if (note) {
-      const dir = path.join(__dirname, ".social_inbox");
-      fs.mkdirSync(dir, { recursive: true });
-      fs.writeFileSync(path.join(dir, `intel-${Date.now()}.txt`),
-        `${new Date().toISOString()} ${note}\n`);
-      await reply("📋 Logged for the social manager.");
+      try {
+        const dir = path.join(__dirname, ".social_inbox");
+        fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(path.join(dir, `intel-${Date.now()}.txt`),
+          `${new Date().toISOString()} ${note}\n`);
+        await reply("📋 Logged for the social manager.");
+      } catch (e) {
+        console.error("@s intel log failed:", e.message);
+        await reply(`⚠️ Couldn't log that for the social manager: ${e.message.slice(0, 200)}`);
+      }
     }
     return;
   }
@@ -552,6 +574,14 @@ async function handleMessage(m) {
       return;
     }
   } else if (isImage) {
+    const declaredImageBytes = toNumber(content.imageMessage?.fileLength);
+    if (declaredImageBytes > MAX_IMAGE_DOWNLOAD_BYTES) {
+      await reply(
+        `📷 That image is too big (${(declaredImageBytes / (1024 * 1024)).toFixed(0)} MB) — ` +
+          `please send a smaller or compressed copy.`
+      );
+      return;
+    }
     try {
       const buf = await downloadBuffer(m);
       if (!buf || !buf.length) {
@@ -706,6 +736,7 @@ async function start() {
 
     if (connection === "open") {
       clientReady = true;
+      reconnectAttempts = 0;
       console.log("READY: WhatsApp bridge is live (Baileys).");
       console.log("LINKED AS:", sock.user?.id || "(wid unknown)");
       if (!startedOnce) {
@@ -744,12 +775,18 @@ async function start() {
       // incoming messages.
       if (reconnectScheduled) return;
       reconnectScheduled = true;
+      // Exponential backoff (2s, 4s, 8s, ... capped at 60s) so a persistent
+      // failure that closes again immediately after every reconnect doesn't
+      // hammer the connection at a fixed 2s interval forever.
+      reconnectAttempts += 1;
+      const delay = Math.min(2_000 * 2 ** (reconnectAttempts - 1), 60_000);
+      console.log(`reconnecting in ${delay}ms (attempt ${reconnectAttempts})`);
       setTimeout(() => start().catch((e) => {
         console.error("reconnect failed:", e.message);
         process.exit(1);
       }).finally(() => {
         reconnectScheduled = false;
-      }), 2_000);
+      }), delay);
     }
   });
 
