@@ -791,6 +791,30 @@ def _hour_24(hour: int, minute: int, meridiem: str, when: str) -> int:
     return hour
 
 
+_TIME_AT_PATTERN = re.compile(r"(?:\bat|\bבשעה|\bב)[\s-]*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?(?!\d)")
+
+
+def _best_at_time_match(text: str):
+    """Find the "at/ב + time" expression to use as the reminder clock time.
+
+    A bare match (just 1-2 digits, no colon or am/pm) is ambiguous — it can
+    misfire on the leading digits of a phone number ("at 054-1234567") or a
+    quantity ("ב-3 חדרים"). The "(?!\\d)" in the pattern already stops it from
+    matching a prefix of a longer digit run (so "at 054-1234567" doesn't match
+    at all, since "05"/"0" is always followed by another digit). On top of
+    that, when the text has both a bare match and one with an explicit
+    minute/am-pm marker (e.g. "...at 054-1234567 tomorrow at 3pm"), the
+    explicit one is almost certainly the intended time, so it's preferred over
+    an earlier bare one instead of just taking whichever comes first."""
+    first_weak = None
+    for m in _TIME_AT_PATTERN.finditer(text):
+        if m.group(2) or m.group(3):
+            return m
+        if first_weak is None:
+            first_weak = m
+    return first_weak
+
+
 def _add_real_duration(moment: datetime, delta: timedelta, tz: ZoneInfo) -> datetime:
     """Add a wall-clock duration ("in 2 hours") as real elapsed time.
 
@@ -835,7 +859,10 @@ def _parse_reminder_when(when: str, tz_name: str = "Asia/Jerusalem") -> datetime
         # A trailing clock time ("in 2 days at 5pm") would otherwise be silently
         # dropped by returning immediately here, leaving the reminder at today's
         # current clock time N days/weeks out instead of the requested hour.
-        trailing_time = re.search(r"(?:at|ב|בשעה)\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?", lowered[relative.end():])
+        # "-" is allowed after the Hebrew prefix because "ב-9"/"ב-14:30" (hyphen,
+        # no space) is the everyday way to write a time in Hebrew — without it,
+        # only the colon or am/pm forms matched and a bare "ב-9" fell through.
+        trailing_time = _best_at_time_match(lowered[relative.end():])
         if trailing_time:
             hour = int(trailing_time.group(1))
             minute = int(trailing_time.group(2) or 0)
@@ -859,11 +886,15 @@ def _parse_reminder_when(when: str, tz_name: str = "Asia/Jerusalem") -> datetime
     # The keyword prefix must actually be present (or the number must carry its
     # own unambiguous time marker: am/pm or a colon) — otherwise this matches
     # the first stray 1-2 digit number anywhere in the text (e.g. "apartment
-    # 4B") and silently creates a reminder at the wrong time.
+    # 4B") and silently creates a reminder at the wrong time. The leading \b
+    # is required too: without it "at"/"ב" also match mid-word ("that 5 star",
+    # "חלב 2 בקבוקים"), silently misfiring on ordinary text that never asked
+    # for a time. "-" is allowed after the Hebrew prefix so "ב-9" (hyphen, no
+    # space) — the everyday way to write a time in Hebrew — matches too.
     time_match = (
-        re.search(r"(?:at|ב|בשעה)\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?", lowered)
-        or re.search(r"(\d{1,2})(?::(\d{2}))?\s*(am|pm)", lowered)
-        or re.search(r"(\d{1,2}):(\d{2})\s*(am|pm)?", lowered)
+        _best_at_time_match(lowered)
+        or re.search(r"(\d{1,2})(?::(\d{2}))?\s*(am|pm)(?!\d)", lowered)
+        or re.search(r"(\d{1,2}):(\d{2})\s*(am|pm)?(?!\d)", lowered)
     )
     if time_match:
         hour = int(time_match.group(1))
@@ -873,6 +904,14 @@ def _parse_reminder_when(when: str, tz_name: str = "Asia/Jerusalem") -> datetime
         if not future_day_word and candidate <= now:
             candidate += timedelta(days=1)
         return candidate
+
+    # A recognized day word ("tomorrow"/"מחר"/"day after tomorrow"/"מחרתיים")
+    # with no explicit clock time is still a fully understood request — default
+    # to the current time on that future day, same as the "in N days" relative
+    # path above. Without this, "remind me the day after tomorrow" raised
+    # "could not understand" even though the day was parsed correctly.
+    if future_day_word:
+        return date_base
 
     raise ValueError(
         f"Could not understand reminder time '{when}'. Use a relative time like 'in 5 minutes' or an ISO datetime."
@@ -941,7 +980,10 @@ def calendar_create_event(summary: str, start: str, end: str, timezone: str = "A
 def calendar_create_reminder(summary: str, when: str, duration_minutes: int = 15, timezone: str = "Asia/Jerusalem", account: str = "business") -> str:
     start_dt = _parse_reminder_when(when, timezone)
     duration = max(5, min(int(duration_minutes or 15), 240))
-    end_dt = start_dt + timedelta(minutes=duration)
+    # Real elapsed time, not naive field arithmetic — see _add_real_duration.
+    # Plain timedelta addition silently shortens/lengthens the reminder by an
+    # hour if its span straddles a DST transition.
+    end_dt = _add_real_duration(start_dt, timedelta(minutes=duration), ZoneInfo(timezone))
     clean_summary = summary.strip()
     if not clean_summary.lower().startswith(("reminder:", "תזכורת:")):
         clean_summary = f"Reminder: {clean_summary}"
@@ -1401,14 +1443,17 @@ def run(prompt: str, history: list, image_path: str = None) -> tuple[str, list]:
 
         # Hit the round cap: side-effecting tool calls above (leads created, events
         # booked, etc.) already happened against real APIs even though we're giving
-        # up here, so record that rather than silently dropping all trace of them.
+        # up here, so tell the user that (not just a bare "stuck in a loop") and
+        # record the same text in history rather than silently dropping all trace
+        # of them.
+        stuck_reply = ("Sorry, I got stuck in a loop after several tool calls — "
+                        "some actions above may have already been taken. Please "
+                        "check before repeating the request.")
         history = history + [
             {"role": "user", "text": prompt},
-            {"role": "model", "text": "Sorry, I got stuck in a loop after several tool calls — "
-                                       "some actions above may have already been taken. Please "
-                                       "check before repeating the request."},
+            {"role": "model", "text": stuck_reply},
         ]
-        return "Sorry, I got stuck in a loop.", history
+        return stuck_reply, history
     except Exception as e:
         # A transient Gemini failure (rate limit, 5xx, safety-filtered/empty
         # response, network blip) must not crash the process — that would deny
