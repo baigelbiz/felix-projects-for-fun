@@ -389,11 +389,18 @@ async function transcribeAudio(m, opts = {}) {
 }
 
 // Unwrap the common envelope wrappers so getContentType sees the real content.
+// viewOnceMessageV2Extension is the wrapper modern WhatsApp clients use for
+// "view once" photos/videos (a sibling of viewOnceMessage/viewOnceMessageV2) —
+// Baileys' own normalizeMessageContent already unwraps it, but this app used
+// its own unwrap() ahead of getContentType and was missing this one case, so a
+// view-once photo silently fell through every isVoice/isImage/... check below
+// and got no reply at all instead of being read like a normal photo.
 function unwrap(message) {
   let content = message;
   if (content?.ephemeralMessage) content = content.ephemeralMessage.message;
   if (content?.viewOnceMessage) content = content.viewOnceMessage.message;
   if (content?.viewOnceMessageV2) content = content.viewOnceMessageV2.message;
+  if (content?.viewOnceMessageV2Extension) content = content.viewOnceMessageV2Extension.message;
   if (content?.documentWithCaptionMessage)
     content = content.documentWithCaptionMessage.message;
   return content;
