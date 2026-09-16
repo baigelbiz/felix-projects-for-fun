@@ -6,6 +6,7 @@ persisting message history between calls (.whatsapp_session file).
 """
 
 import json
+import mimetypes
 import os
 import re
 import socket
@@ -836,7 +837,17 @@ def _parse_reminder_when(when: str, tz_name: str = "Asia/Jerusalem") -> datetime
         parsed = datetime.fromisoformat(raw)
         if parsed.tzinfo is None:
             parsed = parsed.replace(tzinfo=tz)
-        return parsed.astimezone(tz)
+        parsed = parsed.astimezone(tz)
+        # A bare date with no time-of-day (e.g. "2026-09-15") parses to
+        # midnight that day, which is almost always already in the past by
+        # the time this runs. The natural-language day-word path below rolls
+        # a past-midnight candidate to the next day (see the `future_day_word`
+        # check further down); this direct ISO branch used to return
+        # immediately with no such guard, silently creating a reminder that
+        # had already "fired" the moment it was created.
+        if parsed <= now:
+            parsed += timedelta(days=1)
+        return parsed
     except ValueError:
         pass
 
@@ -1267,9 +1278,16 @@ def log_receipt(vendor: str, amount: float, date: str, category: str, notes: str
 
     from googleapiclient.http import MediaFileUpload
     drive = build("drive", "v3", credentials=creds)
-    media = MediaFileUpload(_current_image_path, mimetype="image/jpeg")
+    # The bot can hand us any image type it downloaded (photo -> jpeg, but a
+    # "Document"-sent receipt can be png/webp/etc) — detect from the actual
+    # file instead of assuming jpeg, or Drive stores the wrong mimetype and
+    # the ".jpg" name on a file that isn't one.
+    guessed_type, _ = mimetypes.guess_type(_current_image_path)
+    mimetype = guessed_type if (guessed_type or "").startswith("image/") else "image/jpeg"
+    ext = mimetype.split("/")[1].split(";")[0] or "jpg"
+    media = MediaFileUpload(_current_image_path, mimetype=mimetype)
     uploaded = drive.files().create(
-        body={"name": f"{date}_{vendor}.jpg", "parents": [config["folder_id"]]},
+        body={"name": f"{date}_{vendor}.{ext}", "parents": [config["folder_id"]]},
         media_body=media,
         fields="id, webViewLink",
     ).execute()

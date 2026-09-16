@@ -260,14 +260,40 @@ function startOutboxDrain() {
 // (sendText, sendMessage, execFile), a stalled WhatsApp CDN response here had
 // nothing to bound it — the caller's `await` would hang forever, silently
 // dropping the message with no reply and no error logged.
-async function downloadBuffer(m) {
+//
+// `maxBytes`, when given, is enforced while streaming rather than trusting the
+// caller's own pre-check of the message's declared `fileLength`: that metadata
+// field is optional and comes back missing/zero on some forwarded or
+// older-client media, which made the callers' own size caps a no-op in exactly
+// the case they exist to guard against (an unbounded download is a
+// memory-exhaustion risk on a small VPS). Using Baileys' "stream" mode instead
+// of "buffer" lets us abort as soon as the cap is crossed instead of buffering
+// the whole file first and checking after.
+async function downloadBuffer(m, maxBytes) {
   return withTimeout(
-    downloadMediaMessage(
-      m,
-      "buffer",
-      {},
-      { logger: pino({ level: "silent" }), reuploadRequest: sock.updateMediaMessage }
-    ),
+    (async () => {
+      const stream = await downloadMediaMessage(
+        m,
+        "stream",
+        {},
+        { logger: pino({ level: "silent" }), reuploadRequest: sock.updateMediaMessage }
+      );
+      const chunks = [];
+      let total = 0;
+      for await (const chunk of stream) {
+        total += chunk.length;
+        if (maxBytes && total > maxBytes) {
+          if (typeof stream.destroy === "function") stream.destroy();
+          const err = new Error(
+            `media exceeded the ${(maxBytes / (1024 * 1024)).toFixed(0)} MB download limit`
+          );
+          err.downloadCapped = true;
+          throw err;
+        }
+        chunks.push(chunk);
+      }
+      return Buffer.concat(chunks);
+    })(),
     120_000,
     "downloadMediaMessage"
   );
@@ -342,7 +368,7 @@ async function ffmpegOk() {
 // choice for phone-call recordings, which may be English, Hebrew, or mixed.
 // `opts.biasPrompt` nudges the spelling of proper nouns.
 async function transcribeAudio(m, opts = {}) {
-  const buf = await downloadBuffer(m);
+  const buf = await downloadBuffer(m, opts.maxBytes);
   if (!buf || !buf.length) {
     throw new Error("audio media could not be downloaded (empty response from WhatsApp)");
   }
@@ -435,9 +461,20 @@ async function handleMessage(m) {
         (content.documentMessage?.fileName || "").trim()
       ));
   const isImage = type === "imageMessage";
+  // Sending a photo via WhatsApp's "Document" picker (instead of "Photo") skips
+  // WhatsApp's JPEG recompression — a normal way to send a receipt/screenshot
+  // at full resolution — but it arrives as a documentMessage, not an
+  // imageMessage. Without this, such a message matched none of the type
+  // checks below and was silently dropped: no reply, no log, no error.
+  const isImageDoc =
+    type === "documentMessage" &&
+    (/^image\//i.test(content.documentMessage?.mimetype || "") ||
+      /\.(jpe?g|png|gif|webp|bmp|heic|heif|tiff?)$/i.test(
+        (content.documentMessage?.fileName || "").trim()
+      ));
   const isLocation = type === "locationMessage";
   const isText = type === "conversation" || type === "extendedTextMessage";
-  if (!isVoice && !isAudioDoc && !isImage && !isLocation && !isText) return;
+  if (!isVoice && !isAudioDoc && !isImage && !isImageDoc && !isLocation && !isText) return;
 
   const body = isText ? extractText(content, type) : "";
   // Belt-and-suspenders: never answer our own prefixed replies.
@@ -550,6 +587,7 @@ async function handleMessage(m) {
         ext,
         language: isPttNote ? "he" : undefined,
         biasPrompt: isPttNote ? HEBREW_BIAS : undefined,
+        maxBytes: MAX_AUDIO_DOWNLOAD_BYTES,
       });
       console.log(`-> transcribed ${transcript.length} chars: ${transcript.slice(0, 80)}`);
       if (isPttNote) {
@@ -573,15 +611,24 @@ async function handleMessage(m) {
         `detail=${JSON.stringify(detail)}`
       );
       console.error("transcription failed [stack]:", e?.stack || "(no stack)");
-      if (e?.tooLarge) {
+      if (e?.downloadCapped) {
+        await reply(
+          `⚠️ That recording is too big (over ${(MAX_AUDIO_DOWNLOAD_BYTES / (1024 * 1024)).toFixed(0)} MB) — ` +
+            `send a shorter or compressed clip.`
+        );
+      } else if (e?.tooLarge) {
         await reply(`🎙️ That recording is too big for me to transcribe (${e.message.match(/[\d.]+ MB/)?.[0] || "over 25 MB"}). Whisper caps audio at 25 MB — please send a shorter clip or a compressed copy.`);
       } else {
         await reply("🎙️ I couldn't transcribe that audio — transcription is temporarily down, or it's a format I can't read (try m4a, mp3, ogg, or wav). Please try again or type it out 🙏");
       }
       return;
     }
-  } else if (isImage) {
-    const declaredImageBytes = toNumber(content.imageMessage?.fileLength);
+  } else if (isImage || isImageDoc) {
+    // Same media (imageMessage vs. a documentMessage sent via the "Document"
+    // picker), different field container — read fileLength/mimetype/caption
+    // off whichever one this message actually is.
+    const imgMsg = isImage ? content.imageMessage : content.documentMessage;
+    const declaredImageBytes = toNumber(imgMsg?.fileLength);
     if (declaredImageBytes > MAX_IMAGE_DOWNLOAD_BYTES) {
       await reply(
         `📷 That image is too big (${(declaredImageBytes / (1024 * 1024)).toFixed(0)} MB) — ` +
@@ -590,15 +637,15 @@ async function handleMessage(m) {
       return;
     }
     try {
-      const buf = await downloadBuffer(m);
+      const buf = await downloadBuffer(m, MAX_IMAGE_DOWNLOAD_BYTES);
       if (!buf || !buf.length) {
         throw new Error("image media could not be downloaded (empty response from WhatsApp)");
       }
-      const mime = content.imageMessage?.mimetype || "image/jpeg";
+      const mime = imgMsg?.mimetype || "image/jpeg";
       const ext = (mime.split("/")[1] || "jpeg").split(";")[0];
       imagePath = path.join(os.tmpdir(), `wa_image_${Date.now()}.${ext}`);
       fs.writeFileSync(imagePath, buf);
-      prompt = (content.imageMessage?.caption || "").trim() || "What's in this image?";
+      prompt = (imgMsg?.caption || "").trim() || "What's in this image?";
       console.log(`-> received image, caption: ${prompt.slice(0, 80)}`);
     } catch (e) {
       console.error(
@@ -607,7 +654,14 @@ async function handleMessage(m) {
         `message=${e?.message ?? String(e)}`
       );
       console.error("image download failed [stack]:", e?.stack || "(no stack)");
-      await reply("📷 I couldn't read that image — photo downloads are temporarily down. Please describe it in text (or type out the receipt details) and I'll help right away 🙏");
+      if (e?.downloadCapped) {
+        await reply(
+          `📷 That image is too big (over ${(MAX_IMAGE_DOWNLOAD_BYTES / (1024 * 1024)).toFixed(0)} MB) — ` +
+            `please send a smaller or compressed copy.`
+        );
+      } else {
+        await reply("📷 I couldn't read that image — photo downloads are temporarily down. Please describe it in text (or type out the receipt details) and I'll help right away 🙏");
+      }
       return;
     }
   } else {
