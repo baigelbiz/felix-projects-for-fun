@@ -143,11 +143,17 @@ async function sendProactiveMessage(text) {
     try {
       const sendPromise = sock.sendMessage(jid, { text: body });
       sendPromise.then(() => {
-        if (settled) return;
-        settled = true;
-        if (!stillWaiting) {
-          console.warn("sendProactiveMessage: an earlier attempt succeeded after we'd already moved on to a fallback — possible duplicate delivery");
+        if (settled) {
+          // Another target already succeeded first. If we're not still
+          // inside the await below for *this* target, that means we'd
+          // already timed out and moved on before this send landed — a
+          // real duplicate delivery, worth a log line to debug from.
+          if (!stillWaiting) {
+            console.warn("sendProactiveMessage: an earlier attempt succeeded after we'd already moved on to a fallback — possible duplicate delivery");
+          }
+          return;
         }
+        settled = true;
       }, () => {});
       await withTimeout(sendPromise, 45_000, "sendMessage");
       stillWaiting = false;
@@ -457,7 +463,11 @@ async function handleMessage(m) {
   const isAudioDoc =
     type === "documentMessage" &&
     (/^audio\//i.test(content.documentMessage?.mimetype || "") ||
-      /\.(mp3|mpga|m4a|ogg|opus|wav|webm|flac|aac|amr|3gp)$/i.test(
+      // Keep this extension list in sync with whisperExt()'s filename fallback
+      // below — e.g. .mp4 is a common iOS "Voice Memos" export container, and
+      // whisperExt already treats it as audio. A mismatch here means such a
+      // file matches no type check in handleMessage and is silently dropped.
+      /\.(mp3|mpga|mp4|m4a|ogg|opus|wav|webm|flac|aac|amr|3gp)$/i.test(
         (content.documentMessage?.fileName || "").trim()
       ));
   const isImage = type === "imageMessage";
