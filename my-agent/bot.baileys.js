@@ -673,6 +673,70 @@ async function handleMessage(m) {
   processQueue();
 }
 
+// A PHOTO: result whose file is a `.gif` came from gif_search (a real animated
+// GIF from Giphy), not generate_image (which always writes a `.png`). WhatsApp
+// has no native GIF format — Baileys' own README says to send an animated GIF
+// as an `.mp4` video with `gifPlayback: true` instead. Sending the raw `.gif`
+// bytes via `{ image }` (the path used for every other PHOTO: result) is worse
+// than just "not animated": Baileys' MIMETYPE_MAP has no `gif` entry, so an
+// unlabeled image send is hardcoded to `image/jpeg` regardless of the actual
+// file — mislabeling GIF-format bytes as JPEG, which typically fails to render
+// at all instead of showing a static frame. Transcode with ffmpeg (already used
+// for audio) when available; otherwise fall back to sending the original file
+// as a document so the user at least receives an openable, correctly-labeled
+// .gif instead of a broken image.
+async function sendPhotoResult(jid, photoPath, caption) {
+  const captionText = BOT_MARK + (caption || "");
+  const isGif = path.extname(photoPath).toLowerCase() === ".gif";
+
+  if (isGif && (await ffmpegOk())) {
+    const mp4Path = path.join(os.tmpdir(), `wa_gif_${Date.now()}.mp4`);
+    try {
+      await execFileP(
+        "ffmpeg",
+        [
+          "-y", "-i", photoPath,
+          "-movflags", "faststart",
+          "-pix_fmt", "yuv420p",
+          "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2",
+          mp4Path,
+        ],
+        { timeout: 60_000, maxBuffer: 10 * 1024 * 1024 }
+      );
+      await withTimeout(
+        sock.sendMessage(jid, { video: fs.readFileSync(mp4Path), gifPlayback: true, caption: captionText }),
+        45_000,
+        "sendMessage(gif)"
+      );
+      return;
+    } catch (e) {
+      console.warn("gif->mp4 transcode/send failed, falling back to document:", (e.message || "").slice(0, 200));
+    } finally {
+      fs.unlink(mp4Path, () => {});
+    }
+  }
+
+  if (isGif) {
+    await withTimeout(
+      sock.sendMessage(jid, {
+        document: fs.readFileSync(photoPath),
+        mimetype: "image/gif",
+        fileName: "reply.gif",
+        caption: captionText,
+      }),
+      45_000,
+      "sendMessage(gif-doc)"
+    );
+    return;
+  }
+
+  await withTimeout(
+    sock.sendMessage(jid, { image: fs.readFileSync(photoPath), caption: captionText }),
+    45_000,
+    "sendMessage(image)"
+  );
+}
+
 function processQueue() {
   if (agentBusy || agentQueue.length === 0) return;
   agentBusy = true;
@@ -739,14 +803,7 @@ function processQueue() {
           const photoPath = lines[0].replace("PHOTO:", "").trim();
           const caption = lines.slice(1).join("\n").trim();
           try {
-            await withTimeout(
-              sock.sendMessage(jid, {
-                image: fs.readFileSync(photoPath),
-                caption: BOT_MARK + (caption || ""),
-              }),
-              45_000,
-              "sendMessage(image)"
-            );
+            await sendPhotoResult(jid, photoPath, caption);
           } finally {
             // Delete regardless of whether the send succeeded.
             fs.unlink(photoPath, () => {});
