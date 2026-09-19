@@ -40,13 +40,18 @@ if [ "$STATUS" != "online" ]; then
 
     mkdir -p "$AGENT_DIR/.outbox"
     NOW=$(date +%s)
+    # Cooldown is tracked in our own marker file, not inferred from whatever
+    # alert_*.txt files happen to still be sitting in .outbox: the bot drains
+    # (deletes) each alert file within ~15s of coming back online, so during a
+    # crash-loop (down -> briefly up -> down again every ~5m) .outbox is empty
+    # on every single run, LAST_ALERT_TS would come back 0 every time, and the
+    # cooldown below would never actually throttle anything.
+    LAST_ALERT_FILE="$AGENT_DIR/.last_alert_ts"
     LAST_ALERT_TS=0
-    LAST_ALERT_FILE=$(ls -t "$AGENT_DIR"/.outbox/alert_*.txt 2>/dev/null | head -1)
-    if [ -n "$LAST_ALERT_FILE" ]; then
-        LAST_ALERT_TS=$(basename "$LAST_ALERT_FILE" .txt | sed 's/^alert_//')
-    fi
+    [ -f "$LAST_ALERT_FILE" ] && LAST_ALERT_TS=$(cat "$LAST_ALERT_FILE" 2>/dev/null)
     if [ $(( NOW - ${LAST_ALERT_TS:-0} )) -ge "$ALERT_COOLDOWN_SEC" ]; then
         echo "⚠️ Watchdog: the bot was down (status: ${STATUS:-unknown}) and was restarted at $TS." \
             > "$AGENT_DIR/.outbox/alert_${NOW}.txt"
+        echo "$NOW" > "$LAST_ALERT_FILE"
     fi
 fi
