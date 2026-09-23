@@ -209,9 +209,18 @@ function scheduleMorningBriefing() {
       hour: "2-digit", minute: "2-digit", hour12: false,
     }).formatToParts(now).reduce((out, part) => ((out[part.type] = part.value), out), {});
     const date = `${israel.year}-${israel.month}-${israel.day}`;
+    const minutesSinceMidnight = Number(israel.hour) * 60 + Number(israel.minute);
+    // Catch-up window: the original check only fired inside 07:00-07:02, so a
+    // crash, a deploy restart, or the watchdog's restart cycle landing in
+    // exactly that window meant the process simply wasn't alive to observe it
+    // — nothing failed, the check just never ran, and the whole day's
+    // briefing was silently skipped with no other mechanism to catch up.
+    // Widen the window to any time before noon Israel time: still "morning",
+    // still guarded by botState.briefingDate/briefingQueuedDate so it fires
+    // at most once per date.
     if (
-      israel.hour === "07" &&
-      Number(israel.minute) < 2 &&
+      minutesSinceMidnight >= 7 * 60 &&
+      minutesSinceMidnight < 12 * 60 &&
       botState.briefingDate !== date &&
       briefingQueuedDate !== date
     ) {
@@ -257,6 +266,25 @@ function startOutboxDrain() {
       outboxDraining = false;
     }
   }, 15_000);
+}
+
+// Best-effort fallback for a reply that failed to send outright (not just a
+// slow/retried send — sock.sendMessage itself threw or timed out). This
+// happens when WhatsApp's socket drops mid-agent-run (agent_reply.py can take
+// up to 300s) and `sock` still points at the old, closed socket by the time
+// the reply is ready: the send throws immediately, with no reconnect for it
+// to wait out. Previously that was only console.error'd — a real reply (and
+// any side effect already committed, e.g. a reminder or a receipt) vanished
+// with no signal to Felix and no retry once the socket came back. Queue a
+// notice into .outbox instead, which startOutboxDrain already retries every
+// 15s once clientReady is true again.
+function queueOutboxFallback(text) {
+  try {
+    fs.mkdirSync(OUTBOX_DIR, { recursive: true });
+    fs.writeFileSync(path.join(OUTBOX_DIR, `retry_${Date.now()}.txt`), text.slice(0, 4000));
+  } catch (e) {
+    console.error("failed to queue reply for retry:", e.message);
+  }
 }
 
 // Baileys returns media as a Buffer directly (no base64 round-trip, no browser
@@ -652,8 +680,23 @@ async function handleMessage(m) {
       if (!buf || !buf.length) {
         throw new Error("image media could not be downloaded (empty response from WhatsApp)");
       }
-      const mime = imgMsg?.mimetype || "image/jpeg";
-      const ext = (mime.split("/")[1] || "jpeg").split(";")[0];
+      // imgMsg.mimetype can be a generic non-image value (e.g.
+      // "application/octet-stream") for a documentMessage that isImageDoc only
+      // matched via its filename extension — trusting it blindly here would
+      // write a temp file with a bogus extension (".octet-stream") that
+      // agent_reply.py then hands to Gemini as an invalid "image/octet-stream"
+      // mime_type, failing the whole request instead of reading the image.
+      const rawMime = (imgMsg?.mimetype || "").toLowerCase().split(";")[0];
+      let mime = rawMime.startsWith("image/") ? rawMime : "";
+      if (!mime) {
+        const fileExt = (content.documentMessage?.fileName || "").toLowerCase().match(/\.([a-z0-9]+)$/)?.[1];
+        const extToMime = {
+          jpg: "jpeg", jpeg: "jpeg", png: "png", gif: "gif", webp: "webp",
+          bmp: "bmp", heic: "heic", heif: "heif", tif: "tiff", tiff: "tiff",
+        };
+        mime = `image/${extToMime[fileExt] || "jpeg"}`;
+      }
+      const ext = mime.split("/")[1];
       imagePath = path.join(os.tmpdir(), `wa_image_${Date.now()}.${ext}`);
       fs.writeFileSync(imagePath, buf);
       prompt = (imgMsg?.caption || "").trim() || "What's in this image?";
@@ -785,6 +828,7 @@ function processQueue() {
               }
             } catch (e) {
               console.error("morning briefing send failed:", e.message);
+              queueOutboxFallback("⚠️ Morning briefing was ready but failed to send — the connection likely dropped. Ask me for it directly.");
             }
           }
         } finally {
@@ -824,6 +868,12 @@ function processQueue() {
         }
       } catch (e) {
         console.error("reply failed:", e.message);
+        // No BOT_MARK prefix here — sendProactiveMessage (used by the outbox
+        // drain that eventually delivers this) already adds it.
+        const fallback = raw.startsWith("PHOTO:")
+          ? "I put together a reply (including an image) but couldn't deliver it — the connection dropped. Please ask again."
+          : raw.slice(0, 4000);
+        queueOutboxFallback(fallback);
       } finally {
         agentBusy = false;
         processQueue();
