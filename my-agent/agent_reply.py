@@ -1401,6 +1401,7 @@ def run(prompt: str, history: list, image_path: str = None) -> tuple[str, list]:
             if function_calls:
                 contents.append(response.candidates[0].content)
                 photo_result = None
+                other_results = []
                 response_parts = []
                 for fc in function_calls:
                     args = dict(fc.args or {})
@@ -1431,6 +1432,7 @@ def run(prompt: str, history: list, image_path: str = None) -> tuple[str, list]:
                             response_data = {"result": "Not sent — only one photo can be sent per reply."}
                     else:
                         response_data = {"result": result}
+                        other_results.append(result)
                     response_parts.append(
                         genai_types.Part.from_function_response(name=fc.name, response=response_data)
                     )
@@ -1445,6 +1447,15 @@ def run(prompt: str, history: list, image_path: str = None) -> tuple[str, list]:
                 # call John and also look up his Close lead"), which the API may reject.
                 contents.append(genai_types.Content(role="user", parts=response_parts))
                 if photo_result is not None:
+                    # Other tool calls requested in the same round (e.g. "remind me to
+                    # call John and also make a flyer image") already ran and had real side
+                    # effects (reminder created, note added, etc.) — the early return below
+                    # skips the model's usual summary turn, so without this their outcome
+                    # would never reach the user or the persisted history, even though it
+                    # already happened.
+                    if other_results:
+                        extra = "\n".join(str(r) for r in other_results)
+                        photo_result = f"{photo_result}\n\n{extra}"
                     # Store a clean description in history, not the raw "PHOTO:<tmp-path>"
                     # marker — bot.js deletes that temp file right after sending, and the
                     # marker is meaningless (and misleading if ever echoed back) on a later turn.
