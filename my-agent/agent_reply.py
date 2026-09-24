@@ -852,13 +852,19 @@ def _parse_reminder_when(when: str, tz_name: str = "Asia/Jerusalem") -> datetime
         pass
 
     number_pattern = r"(\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|אחת|אחד|שתיים|שתי|שניים|שלוש|ארבע|חמש|שש|שבע|שמונה|תשע|עשר)"
+    # "in an hour"/"in a minute" (English) carry no explicit count, and Hebrew
+    # has no indefinite article at all ("בעוד שעה" is just "in [an] hour") —
+    # without the "an|a" alternative and making the count optional, both of
+    # these — arguably the most natural way to phrase a relative reminder —
+    # fell through every branch below to the generic "could not understand"
+    # error instead of resolving to a count of 1.
     relative = re.search(
-        rf"(?:in|בעוד)\s+{number_pattern}\s*(minute|minutes|min|hour|hours|day|days|week|weeks|דקה|דקות|שעה|שעות|יום|ימים|שבוע|שבועות)",
+        rf"(?:in|בעוד)\s+(?:{number_pattern}|(an|a))?\s*(minute|minutes|min|hour|hours|day|days|week|weeks|דקה|דקות|שעה|שעות|יום|ימים|שבוע|שבועות)",
         lowered,
     )
     if relative:
-        amount = _natural_number(relative.group(1))
-        unit = relative.group(2)
+        amount = _natural_number(relative.group(1)) if relative.group(1) else 1
+        unit = relative.group(3)
         if unit in {"minute", "minutes", "min", "דקה", "דקות"}:
             return _add_real_duration(now, timedelta(minutes=amount), tz)
         if unit in {"hour", "hours", "שעה", "שעות"}:
