@@ -5,6 +5,7 @@ Prints the agent's reply to stdout. Conversation continuity is kept by
 persisting message history between calls (.whatsapp_session file).
 """
 
+import html as html_module
 import json
 import mimetypes
 import os
@@ -645,8 +646,28 @@ def gmail_read(message_id: str, account: str = "business") -> str:
                 return found
         return None
 
+    def html_to_text(html):
+        # An HTML-only email (no text/plain part — the common case for
+        # invoices, calendar-system notices, receipts, and most marketing/
+        # transactional mail) previously fell through to this raw markup
+        # untouched. Since the result is truncated to 3000 chars below, the
+        # actual message text was routinely pushed past the cutoff by
+        # <head>/<style> boilerplate, so the model summarized CSS/markup
+        # noise instead of the email.
+        text = re.sub(r"(?is)<(script|style)[^>]*>.*?</\1>", " ", html)
+        text = re.sub(r"(?i)<(br|/p|/div|/tr|/li)\s*/?>", "\n", text)
+        text = re.sub(r"<[^>]+>", " ", text)
+        text = html_module.unescape(text)
+        return re.sub(r"[ \t]+", " ", text).strip()
+
     def get_body(payload):
-        return find_part(payload, "text/plain") or find_part(payload, "text/html") or "(no text body)"
+        plain = find_part(payload, "text/plain")
+        if plain is not None:
+            return plain
+        html = find_part(payload, "text/html")
+        if html is not None:
+            return html_to_text(html)
+        return "(no text body)"
 
     body = get_body(msg["payload"])
     return f"From: {headers.get('From','')}\nSubject: {headers.get('Subject','')}\nDate: {headers.get('Date','')}\n\n{body[:3000]}"
