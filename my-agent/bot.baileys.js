@@ -199,7 +199,15 @@ function sendMorningBriefing(date) {
 // (persisted) is only set once the briefing has actually been sent — see
 // processQueue's isBriefing branch — so a crash/restart mid-send correctly
 // retries instead of silently skipping the day's briefing forever.
+//
+// If the agent run itself fails (err branch below) the process usually keeps
+// running (no crash), so nothing would ever clear this and the catch-up
+// window would never get a same-process retry. On that failure we reset it
+// to null (subject to briefingRetryCooldownUntil) so the next 30s poll tries
+// again instead of giving up on the day's briefing entirely.
 let briefingQueuedDate = null;
+let briefingRetryCooldownUntil = 0;
+const BRIEFING_RETRY_COOLDOWN_MS = 15 * 60 * 1000;
 
 function scheduleMorningBriefing() {
   const check = () => {
@@ -222,7 +230,8 @@ function scheduleMorningBriefing() {
       minutesSinceMidnight >= 7 * 60 &&
       minutesSinceMidnight < 12 * 60 &&
       botState.briefingDate !== date &&
-      briefingQueuedDate !== date
+      briefingQueuedDate !== date &&
+      Date.now() >= briefingRetryCooldownUntil
     ) {
       briefingQueuedDate = date;
       sendMorningBriefing(date);
@@ -531,6 +540,10 @@ async function handleMessage(m) {
       await sendText(jid, BOT_MARK + text, m);
     } catch (e) {
       console.error("reply failed:", e.message);
+      // Same rationale as processQueue's main reply path: a send failure here
+      // is usually a dropped connection, not a permanent error, so queue it
+      // for the outbox drain to retry once we're back up instead of losing it.
+      queueOutboxFallback(text);
     }
   };
 
@@ -808,7 +821,18 @@ function processQueue() {
         try {
           if (err) {
             console.error("morning briefing failed:", (stderr || err.message).trim());
-            await sendProactiveMessage(`⚠️ Morning briefing failed: ${(stderr || err.message).slice(0, 300)}`).catch(() => {});
+            // Let the 30s poll retry within today's catch-up window instead of
+            // treating this date as handled — the agent run failed, so nothing
+            // was ever sent. Cooldown avoids hammering retries (and Felix)
+            // every 30s if the failure is persistent.
+            briefingQueuedDate = null;
+            briefingRetryCooldownUntil = Date.now() + BRIEFING_RETRY_COOLDOWN_MS;
+            try {
+              await sendProactiveMessage(`⚠️ Morning briefing failed: ${(stderr || err.message).slice(0, 300)}`);
+            } catch (e) {
+              console.error("morning briefing failure alert also failed to send:", e.message);
+              queueOutboxFallback(`⚠️ Morning briefing failed: ${(stderr || err.message).slice(0, 300)}`);
+            }
           } else {
             try {
               let out = stdout.trim();
