@@ -835,6 +835,9 @@ def _parse_reminder_when(when: str, tz_name: str = "Asia/Jerusalem") -> datetime
 
     try:
         parsed = datetime.fromisoformat(raw)
+    except ValueError:
+        parsed = None
+    if parsed is not None:
         if parsed.tzinfo is None:
             parsed = parsed.replace(tzinfo=tz)
         parsed = parsed.astimezone(tz)
@@ -847,9 +850,19 @@ def _parse_reminder_when(when: str, tz_name: str = "Asia/Jerusalem") -> datetime
         # had already "fired" the moment it was created.
         if parsed <= now:
             parsed += timedelta(days=1)
+            # A single day's bump only fixes the "bare midnight already passed
+            # today" case. If it's still in the past, the input was stale or
+            # malformed (e.g. a wrong year/month) — raise (uncaught by the
+            # isoformat-only except above) instead of silently creating a
+            # reminder that already "fired" the moment it was made, or falling
+            # through to the natural-language path below where stray digits
+            # inside the ISO string (e.g. "10:00" from a timestamp) could
+            # misfire as an unrelated time.
+            if parsed <= now:
+                raise ValueError(
+                    f"Could not understand reminder time '{when}': that date is in the past."
+                )
         return parsed
-    except ValueError:
-        pass
 
     number_pattern = r"(\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|אחת|אחד|שתיים|שתי|שניים|שלוש|ארבע|חמש|שש|שבע|שמונה|תשע|עשר)"
     relative = re.search(
