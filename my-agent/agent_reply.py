@@ -5,6 +5,7 @@ Prints the agent's reply to stdout. Conversation continuity is kept by
 persisting message history between calls (.whatsapp_session file).
 """
 
+import html as html_module
 import json
 import mimetypes
 import os
@@ -645,8 +646,28 @@ def gmail_read(message_id: str, account: str = "business") -> str:
                 return found
         return None
 
+    def html_to_text(html):
+        # An HTML-only email (no text/plain part — the common case for
+        # invoices, calendar-system notices, receipts, and most marketing/
+        # transactional mail) previously fell through to this raw markup
+        # untouched. Since the result is truncated to 3000 chars below, the
+        # actual message text was routinely pushed past the cutoff by
+        # <head>/<style> boilerplate, so the model summarized CSS/markup
+        # noise instead of the email.
+        text = re.sub(r"(?is)<(script|style)[^>]*>.*?</\1>", " ", html)
+        text = re.sub(r"(?i)<(br|/p|/div|/tr|/li)\s*/?>", "\n", text)
+        text = re.sub(r"<[^>]+>", " ", text)
+        text = html_module.unescape(text)
+        return re.sub(r"[ \t]+", " ", text).strip()
+
     def get_body(payload):
-        return find_part(payload, "text/plain") or find_part(payload, "text/html") or "(no text body)"
+        plain = find_part(payload, "text/plain")
+        if plain is not None:
+            return plain
+        html = find_part(payload, "text/html")
+        if html is not None:
+            return html_to_text(html)
+        return "(no text body)"
 
     body = get_body(msg["payload"])
     return f"From: {headers.get('From','')}\nSubject: {headers.get('Subject','')}\nDate: {headers.get('Date','')}\n\n{body[:3000]}"
@@ -835,6 +856,9 @@ def _parse_reminder_when(when: str, tz_name: str = "Asia/Jerusalem") -> datetime
 
     try:
         parsed = datetime.fromisoformat(raw)
+    except ValueError:
+        parsed = None
+    if parsed is not None:
         if parsed.tzinfo is None:
             parsed = parsed.replace(tzinfo=tz)
         parsed = parsed.astimezone(tz)
@@ -847,18 +871,34 @@ def _parse_reminder_when(when: str, tz_name: str = "Asia/Jerusalem") -> datetime
         # had already "fired" the moment it was created.
         if parsed <= now:
             parsed += timedelta(days=1)
+            # A single day's bump only fixes the "bare midnight already passed
+            # today" case. If it's still in the past, the input was stale or
+            # malformed (e.g. a wrong year/month) — raise (uncaught by the
+            # isoformat-only except above) instead of silently creating a
+            # reminder that already "fired" the moment it was made, or falling
+            # through to the natural-language path below where stray digits
+            # inside the ISO string (e.g. "10:00" from a timestamp) could
+            # misfire as an unrelated time.
+            if parsed <= now:
+                raise ValueError(
+                    f"Could not understand reminder time '{when}': that date is in the past."
+                )
         return parsed
-    except ValueError:
-        pass
 
     number_pattern = r"(\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|אחת|אחד|שתיים|שתי|שניים|שלוש|ארבע|חמש|שש|שבע|שמונה|תשע|עשר)"
+    # "in an hour"/"in a minute" (English) carry no explicit count, and Hebrew
+    # has no indefinite article at all ("בעוד שעה" is just "in [an] hour") —
+    # without the "an|a" alternative and making the count optional, both of
+    # these — arguably the most natural way to phrase a relative reminder —
+    # fell through every branch below to the generic "could not understand"
+    # error instead of resolving to a count of 1.
     relative = re.search(
-        rf"(?:in|בעוד)\s+{number_pattern}\s*(minute|minutes|min|hour|hours|day|days|week|weeks|דקה|דקות|שעה|שעות|יום|ימים|שבוע|שבועות)",
+        rf"(?:in|בעוד)\s+(?:{number_pattern}|(an|a))?\s*(minute|minutes|min|hour|hours|day|days|week|weeks|דקה|דקות|שעה|שעות|יום|ימים|שבוע|שבועות)",
         lowered,
     )
     if relative:
-        amount = _natural_number(relative.group(1))
-        unit = relative.group(2)
+        amount = _natural_number(relative.group(1)) if relative.group(1) else 1
+        unit = relative.group(3)
         if unit in {"minute", "minutes", "min", "דקה", "דקות"}:
             return _add_real_duration(now, timedelta(minutes=amount), tz)
         if unit in {"hour", "hours", "שעה", "שעות"}:
