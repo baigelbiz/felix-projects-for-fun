@@ -845,7 +845,13 @@ def _parse_reminder_when(when: str, tz_name: str = "Asia/Jerusalem") -> datetime
         # check further down); this direct ISO branch used to return
         # immediately with no such guard, silently creating a reminder that
         # had already "fired" the moment it was created.
-        if parsed <= now:
+        # A single `+= 1 day` only covers a date that's *today's* stale
+        # midnight (parsed is at most ~24h behind `now`). A date further in
+        # the past (e.g. the model passes a wrong year, or a clock-skewed
+        # "today") landed only one day forward and was often still in the
+        # past — loop until it's actually in the future instead of assuming
+        # one bump is enough.
+        while parsed <= now:
             parsed += timedelta(days=1)
         return parsed
     except ValueError:
